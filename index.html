@@ -1,626 +1,790 @@
 <!doctype html>
 <html lang="de">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Blackjack — GitHub Pages Demo</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Blackjack — Modern (GitHub Pages)</title>
+<link rel="preconnect" href="https://fonts.gstatic.com">
 <style>
+  /* ---------- Grundlayout ---------- */
   :root{
-    --bg:#0b3b2e;
-    --card:#fff;
-    --panel:#0f7a66;
-    --muted: #cfeee4;
+    --bg1: #061718;
+    --bg2: #063033;
+    --panel: rgba(255,255,255,0.06);
     --accent: #ffd166;
+    --muted: #cfeee4;
+    --card-white: #fff;
+    --card-shadow: rgba(0,0,0,0.45);
   }
-  body{
-    margin:0;
-    font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
-    background: linear-gradient(180deg,#023b2f 0%, #042f24 60%);
-    color:var(--muted);
-    display:flex;
-    min-height:100vh;
-    align-items:flex-start;
-    justify-content:center;
-    padding:24px;
-  }
-  main{
-    width:100%;
-    max-width:1100px;
-    background:rgba(0,0,0,0.18);
-    border-radius:12px;
-    padding:18px;
-    box-shadow:0 8px 30px rgba(0,0,0,0.5);
-    backdrop-filter: blur(6px);
-  }
-  header{
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    gap:12px;
-    margin-bottom:12px;
-  }
-  h1{ margin:0; font-size:1.3rem; color:var(--accent);}
-  .controls{
-    display:flex;
-    gap:8px;
-    align-items:center;
-  }
-  select,input[type=number]{ padding:8px; border-radius:6px; border:none; font-size:0.95rem;}
-  button{
-    background:var(--panel);
-    color:#fff;
-    border:none;
-    padding:10px 12px;
-    border-radius:8px;
-    cursor:pointer;
-    font-weight:600;
-  }
-  .layout{
-    display:grid;
-    grid-template-columns: 320px 1fr;
-    gap:18px;
-  }
-  .left{
-    background:rgba(255,255,255,0.03);
-    padding:12px;
-    border-radius:10px;
-  }
-  .right{
-    background:rgba(255,255,255,0.02);
-    padding:12px;border-radius:10px;
-  }
-  .table{
-    display:flex;
-    flex-direction:column;
-    gap:12px;
-  }
-  .player-row{
-    display:flex; gap:12px; align-items:center; padding:10px; background:rgba(0,0,0,0.15); border-radius:8px;
-  }
-  .cards{ display:flex; gap:8px; align-items:center; }
+  *{box-sizing:border-box}
+  html,body{height:100%; margin:0; font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; background: linear-gradient(180deg,var(--bg1),var(--bg2)); color:var(--muted);}
+  main{max-width:1200px; margin:20px auto; padding:18px; border-radius:12px; background:linear-gradient(180deg, rgba(0,0,0,0.18), rgba(0,0,0,0.25)); box-shadow: 0 12px 40px rgba(0,0,0,0.6);}
+  header{display:flex; align-items:center; justify-content:space-between; gap:12px;}
+  h1{margin:0; color:var(--accent); font-size:1.2rem}
+  .top-controls{display:flex; gap:10px; align-items:center;}
+  select,input[type=number],input[type=text]{padding:8px;border-radius:8px;border:none;background:rgba(255,255,255,0.04);color:var(--muted)}
+  button{background:var(--accent); color:#042024; border:none; padding:8px 12px; border-radius:10px; font-weight:700; cursor:pointer}
+  .layout{display:grid; grid-template-columns: 400px 1fr; gap:18px; margin-top:14px;}
+  @media (max-width:980px){ .layout{grid-template-columns:1fr} }
+
+  /* left panel */
+  .panel{background:var(--panel); padding:12px; border-radius:10px}
+  .section-title{font-weight:800; color:var(--accent); margin-bottom:8px}
+  .players-config{display:flex; flex-direction:column; gap:8px; margin-bottom:10px}
+  .player-config-row{display:flex; gap:8px; align-items:center}
+  .small{font-size:0.9rem;color:#bfe6d6}
+
+  /* table area */
+  .board{padding:12px; border-radius:10px; background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.05)); min-height:380px; display:flex; flex-direction:column; gap:12px}
+  .players-area{display:flex; gap:12px; flex-wrap:wrap}
+  .player-slot{flex:1 1 240px; background:rgba(0,0,0,0.12); padding:10px; border-radius:10px; position:relative; overflow:hidden; min-width:220px}
+  .player-name{font-weight:800; color:var(--accent)}
+  .status-line{font-size:0.85rem; color:#bfe6d6}
+  .cards{display:flex; gap:10px; margin-top:8px; min-height:110px}
   .card{
-    width:64px; height:92px; border-radius:8px; background:var(--card); color:#000;
-    display:flex; align-items:center; justify-content:center; font-weight:700; box-shadow:0 6px 14px rgba(0,0,0,0.4);
-    font-size:1.05rem;
+    width:84px; height:120px; border-radius:10px; background:var(--card-white); color:#000; display:flex; align-items:flex-start; justify-content:center; flex-direction:column; padding:8px; font-weight:700;
+    box-shadow: 0 8px 18px var(--card-shadow); transform-origin:50% 50%;
+    transition: transform .22s ease, box-shadow .22s ease;
   }
-  .card.hidden{ background:linear-gradient(135deg,#333,#111); color:#fff; }
-  .player-info{ flex:1; display:flex; flex-direction:column; gap:6px; }
-  .player-name{ font-weight:700; color:var(--accent); }
-  .player-meta{ font-size:0.9rem; color:#d7efe7;}
-  .actions{ display:flex; gap:8px; }
-  .log{ max-height:220px; overflow:auto; padding:8px; background:rgba(0,0,0,0.2); border-radius:8px; font-size:0.95rem;}
-  .footer{ display:flex; gap:8px; justify-content:space-between; align-items:center; margin-top:12px; }
-  .status{ font-weight:700; color:var(--accent); }
-  .winner { color:#ffd166; font-weight:900; }
-  @media (max-width:900px){
-    .layout{ grid-template-columns: 1fr; }
-  }
+  .card.hidden{background:linear-gradient(135deg,#333,#111); color:#fff; display:flex; align-items:center; justify-content:center}
+  .card.play-anim{ transform: translateY(-6px) rotate(-6deg) }
+  .card .rank{font-size:1.05rem}
+  .card .suit{font-size:1.6rem; opacity:0.9}
+  .controls-row{display:flex; gap:8px; margin-top:10px}
+  .chips{display:flex; gap:8px; align-items:center; margin-top:8px}
+  .chip{background:var(--accent); color:#042024; padding:6px 10px; border-radius:20px; font-weight:800}
+
+  /* bet bar */
+  .bet-area{display:flex; gap:10px; align-items:center; margin-top:10px}
+  .bet-btn{background:rgba(255,255,255,0.06); border-radius:8px; padding:8px 10px; border:none; color:var(--muted); cursor:pointer}
+  .bet-input{width:120px;padding:8px;border-radius:8px;border:none;background:rgba(255,255,255,0.03);color:var(--muted)}
+
+  /* footer */
+  .footer{display:flex; justify-content:space-between; align-items:center; margin-top:12px}
+  .log{max-height:220px; overflow:auto; background:rgba(0,0,0,0.22); padding:8px; border-radius:8px; font-size:0.95rem}
+
+  /* animations */
+  .deal-anim{ animation: deal .36s ease forwards }
+  @keyframes deal{ 0%{ transform: translateY(-30px) scale(.8); opacity:0 } 100%{ transform:none; opacity:1 } }
+
+  /* winner highlight */
+  .winner { box-shadow: 0 0 18px rgba(255,209,102,0.45), 0 12px 30px rgba(0,0,0,0.5) !important; }
+
+  /* small helpers */
+  .muted { color:#9bcfbf; font-size:0.9rem }
+  .settings-row{display:flex; gap:8px; align-items:center; margin-top:8px}
+  .hint{font-size:0.85rem; color:#9fcfb3}
+  .card-svg{width:100%;height:100%}
 </style>
 </head>
 <body>
 <main>
   <header>
-    <h1>Blackjack — GitHub Pages (Hotseat + Bots)</h1>
-    <div class="controls">
-      <label for="mode">Modus</label>
+    <h1>Blackjack — Modern (Hotseat + optional WebRTC)</h1>
+    <div class="top-controls">
       <select id="mode">
-        <option value="vsDealer" selected>Gegen Dealer (klassisch)</option>
-        <option value="free">Mehrspieler (gegenseitig, hotseat)</option>
+        <option value="vsDealer" selected>Gegen Dealer</option>
+        <option value="free">Mehrspieler (gegenseitig)</option>
+        <option value="realtime">Echtzeit-Multiplayer (WebRTC)</option>
       </select>
 
-      <label for="numPlayers">Spieler</label>
-      <input id="numPlayers" type="number" min="1" max="6" value="2" style="width:64px"/>
-
+      <input id="numPlayers" type="number" min="1" max="6" value="2" title="Anzahl Mitspieler (ohne Dealer)" style="width:64px"/>
       <button id="setupBtn">Setup</button>
-      <button id="startBtn">Start Spiel</button>
+      <button id="startBtn">Start</button>
     </div>
   </header>
 
   <div class="layout">
-    <section class="left">
-      <h3>Einstellungen</h3>
-      <div id="playersConfig" style="display:flex;flex-direction:column;gap:8px;margin-top:8px;"></div>
+    <!-- LEFT: Settings -->
+    <aside class="panel">
+      <div class="section-title">Einstellungen & Wallet</div>
 
-      <div style="margin-top:12px;">
-        <label><input id="showTotals" type="checkbox" checked/> Punktzahlen während des Spiels anzeigen</label>
+      <div class="small">Bankroll wird lokal gespeichert (localStorage)</div>
+      <div style="margin-top:8px;">
+        <label>Spieler & Typ</label>
+        <div id="playersConfig" class="players-config"></div>
+        <div style="margin-top:8px" class="small">Bots spielen automatisch, Dealer ist standardmäßig ein Bot.</div>
       </div>
 
-      <div style="margin-top:12px;">
-        <small>Hinweis: Dieses Spiel ist für lokale Hotseat-Runden auf GitHub Pages gedacht. Echtzeit-Multiplayer zwischen Browsern benötigt Server/Signaling.</small>
+      <div style="margin-top:10px">
+        <div class="section-title">Bankroll / Chips</div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <label for="bankroll">Start-Bankroll</label>
+          <input id="bankroll" type="number" min="1" value="1000" style="width:100px;"/>
+        </div>
+        <div style="margin-top:8px" class="small">Bankroll wird bei Spielstart in localStorage gespeichert und nach jeder Runde aktualisiert.</div>
       </div>
-    </section>
 
-    <section class="right">
-      <div class="table" id="tableArea">
-        <!-- Dynamisch -->
+      <div style="margin-top:10px">
+        <div class="section-title">Echtzeit (optional)</div>
+        <div class="small">Signaling URL (optional):</div>
+        <input id="signalUrl" type="text" placeholder="wss://mein-signaling.example" />
+        <div class="small" style="margin-top:6px">Wenn leer → Hotseat / lokale Runde. Liegt eine URL vor, wird versucht sich zu verbinden (WebSocket) und WebRTC-Datakanäle aufzubauen.</div>
       </div>
 
-      <div class="footer">
-        <div class="status" id="status">Bereit.</div>
+      <div style="margin-top:12px" class="section-title">Spielregeln (Auswahl)</div>
+      <div class="small">Double Down ✔ · Split (einfach) ✔ · Insurance (bei Dealer-A) ✔ · Blackjack 3:2 ✔</div>
+
+      <div style="margin-top:12px" class="section-title">Sound & Animation</div>
+      <div class="small">Sounds werden per WebAudio erzeugt. Animationsgrad: <select id="animLevel"><option value="1" selected>Normal</option><option value="0">Aus</option></select></div>
+
+      <div style="margin-top:12px">
+        <button id="saveSettings">Einstellungen speichern</button>
+        <button id="resetStorage" style="background:rgba(255,255,255,0.06); color:var(--muted)">Storage löschen</button>
+      </div>
+    </aside>
+
+    <!-- RIGHT: Board -->
+    <section class="board">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
         <div>
-          <button id="dealBtn" disabled>Geben</button>
-          <button id="nextBtn" disabled>Nächster</button>
-          <button id="resetBtn">Neu</button>
+          <div class="section-title">Spielbrett</div>
+          <div class="hint">Wähle Einsätze, drücke "Start". Split/Double erscheinen kontextabhängig.</div>
+        </div>
+        <div style="display:flex; gap:12px; align-items:center">
+          <div class="muted">Status: <span id="status">Bereit</span></div>
+          <div class="muted">Animations: <span id="animInfo">on</span></div>
         </div>
       </div>
 
-      <h4 style="margin-top:12px">Spielprotokoll</h4>
-      <div class="log" id="log"></div>
+      <!-- Players -->
+      <div class="players-area" id="playersArea"></div>
+
+      <!-- Bet area -->
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <div class="bet-area">
+          <input id="betInput" class="bet-input" type="number" min="1" value="10"/>
+          <button id="placeBet" class="bet-btn">Einsatz platzieren</button>
+          <button id="autoBet" class="bet-btn">Auto-Bet (min)</button>
+        </div>
+
+        <div style="display:flex; gap:8px; align-items:center;">
+          <div class="small">Bankroll insgesamt: <span id="bankrollDisplay">—</span></div>
+          <button id="revealBtn" style="background:rgba(255,255,255,0.06); color:var(--muted)">Dealer zeigen / Force</button>
+        </div>
+      </div>
+
+      <!-- Controls -->
+      <div style="display:flex; gap:8px; margin-top:10px; align-items:center;">
+        <button id="dealBtn" disabled>Geben</button>
+        <button id="hitBtn" disabled>Hit</button>
+        <button id="standBtn" disabled>Stand</button>
+        <button id="doubleBtn" disabled>Double</button>
+        <button id="splitBtn" disabled>Split</button>
+        <button id="nextBtn" disabled>Nächster</button>
+        <button id="newRoundBtn" disabled>Neue Runde</button>
+      </div>
+
+      <div class="footer">
+        <div class="log" id="log"></div>
+        <div style="min-width:260px">
+          <div class="section-title">Tipps & Regeln</div>
+          <div class="small">Double: verdopple Einsatz, genau 1 Karte. Split: nur bei Gleichem Rang (z.B. 8/8). Insurance: wird angeboten wenn Dealer Ace zeigt.</div>
+          <div style="margin-top:8px">
+            <button id="explainWebrtc" class="bet-btn">Wie funktioniert Echtzeit (kurz)?</button>
+          </div>
+        </div>
+      </div>
     </section>
   </div>
 </main>
 
 <script>
-/* ---------------------------
-   Blackjack für GitHub Pages
-   - Hotseat Multiplayer / Bots
-   - Eine Datei: index.html
-   --------------------------- */
+/* ============================================================
+   Modernes Blackjack — eine Datei
+   Unterstützt:
+    - Persistent Bankroll (localStorage)
+    - Einsatz / Bet-Management
+    - Double Down, Split (einfach), Insurance (einfach)
+    - Besserer Bot (vereinfachte Basic-Strategie)
+    - Karten als SVG, Animationen und Sounds (WebAudio)
+    - Optional: WebSocket Signaling URL für WebRTC (du brauchst Server)
+   ============================================================ */
 
-class Deck {
-  constructor(){
-    this.cards = [];
-    this.reset();
-  }
-  reset(){
-    const suits = ['♠','♥','♦','♣'];
-    const ranks = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
-    this.cards = [];
-    for(const s of suits){
-      for(const r of ranks){
-        this.cards.push({rank:r,suit:s,code: r + s});
-      }
-    }
-    this.shuffle();
-  }
-  shuffle(){
-    // Fisher-Yates
-    for(let i=this.cards.length-1;i>0;i--){
-      const j = Math.floor(Math.random()*(i+1));
-      [this.cards[i], this.cards[j]] = [this.cards[j], this.cards[i]];
-    }
-  }
-  draw(){
-    if(this.cards.length === 0){
-      this.reset();
-    }
-    return this.cards.pop();
-  }
-}
-
-class Player {
-  constructor(name, type='human'){ // type: 'human' | 'bot' | 'dealer'
-    this.name = name;
-    this.type = type;
-    this.hand = [];
-    this.stand = false;
-    this.busted = false;
-    this.blackjack = false;
-  }
-  resetHand(){
-    this.hand = [];
-    this.stand = false;
-    this.busted = false;
-    this.blackjack = false;
-  }
-  addCard(c){
-    this.hand.push(c);
-    const total = this.getBestValue();
-    if(total > 21) this.busted = true;
-    if(this.hand.length === 2 && total === 21) this.blackjack = true;
-  }
-  getBestValue(){
-    // calculate best numeric hand value (A = 1 or 11)
-    let sum = 0;
-    let aces = 0;
-    for(const c of this.hand){
-      const r = c.rank;
-      if(r === 'A'){ aces++; sum += 1; }
-      else if(['J','Q','K'].includes(r)) sum += 10;
-      else sum += parseInt(r,10);
-    }
-    // try upgrade aces from 1 to 11 if possible
-    for(let k=0;k<aces;k++){
-      if(sum + 10 <= 21) sum += 10;
-    }
-    return sum;
-  }
-}
-
-/* ----------- GAME STATE ----------- */
-const deck = new Deck();
-let players = []; // includes dealer if in vsDealer mode
-let currentPlayerIndex = 0;
-let mode = 'vsDealer';
-let showTotals = true;
-
-/* ----------- DOM refs ----------- */
-const modeSel = document.getElementById('mode');
-const numPlayersInput = document.getElementById('numPlayers');
-const setupBtn = document.getElementById('setupBtn');
-const startBtn = document.getElementById('startBtn');
-const playersConfig = document.getElementById('playersConfig');
-const tableArea = document.getElementById('tableArea');
-const dealBtn = document.getElementById('dealBtn');
-const nextBtn = document.getElementById('nextBtn');
-const resetBtn = document.getElementById('resetBtn');
-const logEl = document.getElementById('log');
-const statusEl = document.getElementById('status');
-const showTotalsCheckbox = document.getElementById('showTotals');
-
-/* ----------- UI helpers ----------- */
+/* --------------------------- Utilities --------------------------- */
+const $ = id => document.getElementById(id);
+const logEl = $('log');
 function log(msg){
   const line = document.createElement('div');
   line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
   logEl.prepend(line);
 }
-function clearLog(){ logEl.innerHTML = ''; }
-function setStatus(s){ statusEl.textContent = s; }
+function setStatus(s){ $('status').textContent = s; }
 
-/* ----------- Setup UI for player options ----------- */
+/* --------------------------- LocalStorage (Bankroll) --------------------------- */
+const STORAGE_KEY = 'bj_modern_v1';
+function saveStorage(state){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+function loadStorage(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw) return null;
+    return JSON.parse(raw);
+  }catch(e){ return null; }
+}
+function clearStorage(){
+  localStorage.removeItem(STORAGE_KEY);
+  location.reload();
+}
+
+/* --------------------------- Deck & Card SVG --------------------------- */
+class Deck {
+  constructor(){
+    this.reset();
+  }
+  reset(){
+    this.cards = [];
+    const suits = ['♠','♥','♦','♣'];
+    const ranks = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
+    for(const s of suits) for(const r of ranks) this.cards.push({rank:r,suit:s,code:r+s});
+    this.shuffle();
+  }
+  shuffle(){
+    for(let i=this.cards.length-1;i>0;i--){
+      const j = Math.floor(Math.random()*(i+1));
+      [this.cards[i],this.cards[j]]=[this.cards[j],this.cards[i]];
+    }
+  }
+  draw(){ if(this.cards.length===0) this.reset(); return this.cards.pop(); }
+}
+
+/* create a small card DOM element with SVG */
+function makeCardElement(card, hidden=false){
+  const el = document.createElement('div');
+  el.className = 'card';
+  if(hidden){ el.classList.add('hidden'); el.textContent = ''; return el; }
+  // front: simple big suit and rank
+  const rank = document.createElement('div'); rank.className='rank'; rank.textContent = card.rank;
+  const suit = document.createElement('div'); suit.className='suit'; suit.textContent = card.suit;
+  el.appendChild(rank); el.appendChild(suit);
+  return el;
+}
+
+/* --------------------------- Player --------------------------- */
+class Player {
+  constructor(name, type='human'){
+    this.name = name;
+    this.type = type; // human / bot / dealer
+    this.hands = [ {cards:[], bet:0, stand:false, busted:false, doubled:false, insurance:0} ]; // allow split -> multiple hands
+    this.bankroll = 0;
+  }
+  resetForRound(){ this.hands = [ {cards:[], bet:0, stand:false, busted:false, doubled:false, insurance:0} ]; }
+  bestValueOfHand(h){
+    // h.cards array
+    let sum=0, aces=0;
+    for(const c of h.cards){
+      if(c.rank==='A'){ aces++; sum+=1; }
+      else if(['J','Q','K'].includes(c.rank)) sum+=10;
+      else sum+=parseInt(c.rank,10);
+    }
+    for(let i=0;i<aces;i++) if(sum+10<=21) sum+=10;
+    return sum;
+  }
+  handIsBlackjack(h){
+    return h.cards.length===2 && this.bestValueOfHand(h)===21;
+  }
+}
+
+/* --------------------------- Global Game State --------------------------- */
+let deck = new Deck();
+let players = []; // array of Player
+let dealer = null;
+let currentMode = 'vsDealer';
+let currentPlayerIndex = 0;
+let currentHandIndex = 0;
+let storage = loadStorage() || {bankrolls: {}, settings:{}};
+let animOn = true;
+
+/* --------------------------- DOM refs --------------------------- */
+const playersArea = $('playersArea');
+const playersConfig = $('playersConfig');
+const bankrollInput = $('bankroll');
+const saveSettingsBtn = $('saveSettings');
+const resetStorageBtn = $('resetStorage');
+const setupBtn = $('setupBtn');
+const startBtn = $('startBtn');
+const dealBtn = $('dealBtn');
+const hitBtn = $('hitBtn');
+const standBtn = $('standBtn');
+const doubleBtn = $('doubleBtn');
+const splitBtn = $('splitBtn');
+const nextBtn = $('nextBtn');
+const newRoundBtn = $('newRoundBtn');
+const betInput = $('betInput');
+const placeBetBtn = $('placeBet');
+const autoBetBtn = $('autoBet');
+const revealBtn = $('revealBtn');
+const signalUrlInput = $('signalUrl');
+const animLevelSel = $('animLevel');
+const numPlayersInput = $('numPlayers');
+const modeSel = $('mode');
+const explainWebrtcBtn = $('explainWebrtc');
+
+/* --------------------------- Init UI --------------------------- */
 function renderPlayersConfig(){
-  playersConfig.innerHTML = '';
+  playersConfig.innerHTML='';
   const n = parseInt(numPlayersInput.value,10) || 1;
   for(let i=0;i<n;i++){
-    const div = document.createElement('div');
-    div.style.display = 'flex';
-    div.style.gap = '8px';
-    div.style.alignItems = 'center';
-    const nameInput = document.createElement('input');
-    nameInput.placeholder = `Spieler ${i+1}`;
-    nameInput.value = `Player ${i+1}`;
-    nameInput.style.flex='1';
-    const typeSel = document.createElement('select');
-    const optHuman = document.createElement('option'); optHuman.value='human'; optHuman.text='Mensch';
-    const optBot = document.createElement('option'); optBot.value='bot'; optBot.text='Bot';
-    typeSel.appendChild(optHuman); typeSel.appendChild(optBot);
-    div.appendChild(nameInput);
-    div.appendChild(typeSel);
-    playersConfig.appendChild(div);
+    const row = document.createElement('div'); row.className='player-config-row';
+    const name = document.createElement('input'); name.type='text'; name.value=`Player ${i+1}`; name.style.flex='1';
+    const sel = document.createElement('select');
+    const optH = document.createElement('option'); optH.value='human'; optH.text='Mensch';
+    const optB = document.createElement('option'); optB.value='bot'; optB.text='Bot';
+    sel.appendChild(optH); sel.appendChild(optB);
+    row.appendChild(name); row.appendChild(sel);
+    playersConfig.appendChild(row);
   }
 }
 
-/* ----------- Build table UI ----------- */
-function renderTable(){
-  tableArea.innerHTML = '';
-  for(let i=0;i<players.length;i++){
-    const p = players[i];
-    const row = document.createElement('div');
-    row.className = 'player-row';
-    row.dataset.index = i;
-
-    const info = document.createElement('div');
-    info.className = 'player-info';
-    const title = document.createElement('div');
-    title.className = 'player-name';
-    title.textContent = p.name + (p.type==='dealer' ? ' (Dealer)' : p.type==='bot' ? ' (Bot)' : '');
-    const meta = document.createElement('div');
-    meta.className = 'player-meta';
-    meta.textContent = `Status: ${p.busted ? 'BUSTED' : p.stand ? 'Stand' : 'Bereit'}`;
-    info.appendChild(title);
-    info.appendChild(meta);
-
-    const cardsWrap = document.createElement('div');
-    cardsWrap.className = 'cards';
-    // cards
-    for(const c of p.hand){
-      const cd = document.createElement('div');
-      cd.className = 'card';
-      cd.textContent = `${c.rank}${c.suit}`;
-      cardsWrap.appendChild(cd);
-    }
-    // dealer's first card hidden until reveal
-    if(p.type === 'dealer' && p.hand.length > 0 && mode === 'vsDealer'){
-      // first card should be visible, second hidden initially (we will mark second hidden)
-      // We'll mark the second card as hidden if game state before dealer reveal.
-      if(!p.revealed){
-        // mark second card hidden only if exists
-        if(cardsWrap.children[1]){
-          cardsWrap.children[1].classList.add('hidden');
-          cardsWrap.children[1].textContent = '';
-        }
-      }
-    }
-
-    // show total optionally
-    const totalWrap = document.createElement('div');
-    totalWrap.style.minWidth = '90px';
-    totalWrap.style.textAlign = 'right';
-    const totalVal = document.createElement('div');
-    totalVal.style.fontWeight = '700';
-    if(showTotals){
-      const val = p.getBestValue();
-      totalVal.textContent = `→ ${val}`;
-    } else totalVal.textContent = '';
-    totalWrap.appendChild(totalVal);
-
-    // actions for current human player
-    const actions = document.createElement('div');
-    actions.className = 'actions';
-    if(i === currentPlayerIndex && players[currentPlayerIndex].type === 'human' && !players[i].stand && !players[i].busted){
-      const hitBtn = document.createElement('button'); hitBtn.textContent = 'Hit';
-      const standBtn = document.createElement('button'); standBtn.textContent = 'Stand';
-      hitBtn.onclick = ()=> playerHit(i);
-      standBtn.onclick = ()=> playerStand(i);
-      actions.appendChild(hitBtn);
-      actions.appendChild(standBtn);
-    } else {
-      actions.innerHTML = '';
-    }
-
-    row.appendChild(info);
-    row.appendChild(cardsWrap);
-    row.appendChild(totalWrap);
-    row.appendChild(actions);
-
-    tableArea.appendChild(row);
-  }
-}
-
-/* ----------- Game logic ----------- */
+/* --------------------------- Build players from config --------------------------- */
 function setupPlayersFromUI(){
   players = [];
-  const children = [...playersConfig.children];
-  const selMode = modeSel.value;
-  for(const ch of children){
-    const name = ch.querySelector('input').value.trim() || 'Spieler';
-    const type = ch.querySelector('select').value;
-    players.push(new Player(name, type));
+  const rows = [...playersConfig.children];
+  for(const r of rows){
+    const name = r.querySelector('input').value.trim() || 'Spieler';
+    const type = r.querySelector('select').value;
+    const p = new Player(name, type);
+    // load bankroll if exists
+    p.bankroll = storage.bankrolls[name] ?? parseInt(bankrollInput.value,10) || 1000;
+    players.push(p);
   }
-  if(selMode === 'vsDealer'){
-    // add dealer at end
-    const dealer = new Player('Dealer', 'dealer');
-    dealer.revealed = false; // we'll reveal dealer's face-down later
-    players.push(dealer);
-  }
-  currentPlayerIndex = 0;
-  deck.reset();
-  clearLog();
-  log('Spieler gesetzt. Drücke "Start Spiel".');
-  setStatus('Setup fertig.');
-  renderTable();
-  dealBtn.disabled = true;
-  nextBtn.disabled = true;
+  // dealer
+  dealer = new Player('Dealer', 'dealer');
+  dealer.bankroll = 0;
+  currentMode = modeSel.value;
+  // if realtime mode, we will try connect to signaling if URL present when starting
+  renderPlayersArea();
+  saveStorage();
+  updateBankrollDisplay();
+  setStatus('Players gesetzt. Platziere Einsätze und drücke Start.');
 }
 
-function startGame(){
-  if(players.length === 0){
-    log('Keine Spieler. Setup zuerst ausführen.');
-    return;
+/* --------------------------- UI: players area --------------------------- */
+function renderPlayersArea(){
+  playersArea.innerHTML='';
+  for(let i=0;i<players.length;i++){
+    const p = players[i];
+    const slot = document.createElement('div'); slot.className='player-slot'; slot.dataset.index=i;
+    const title = document.createElement('div'); title.className='player-name'; title.textContent = `${p.name} ${p.type==='bot'?'(Bot)':''}`;
+    const meta = document.createElement('div'); meta.className='status-line'; meta.textContent = `Hands: ${p.hands.length}`;
+    slot.appendChild(title); slot.appendChild(meta);
+    // chips display
+    const chips = document.createElement('div'); chips.className='chips'; chips.innerHTML = `<div class="chip">${p.bankroll} ♢</div><div class="muted">Bankroll</div>`;
+    slot.appendChild(chips);
+    // cards container
+    const cardWrap = document.createElement('div'); cardWrap.className='cards'; cardWrap.id = `cards-${i}`;
+    slot.appendChild(cardWrap);
+    playersArea.appendChild(slot);
   }
-  // reset hands
-  for(const p of players) p.resetHand();
-  deck.reset();
-  // initial deal: 2 Karten an jeden (im klassischen modus dealer gets 2, with one hidden)
-  for(let r=0;r<2;r++){
-    for(let i=0;i<players.length;i++){
-      const p = players[i];
-      const card = deck.draw();
-      p.addCard(card);
-    }
-  }
-  // If dealer present and in vsDealer mode, mark second card hidden
-  if(modeSel.value === 'vsDealer'){
-    const dealer = players[players.length-1];
-    dealer.revealed = false;
-  }
-  // check immediate blackjack
+  // dealer slot
+  const dslot = document.createElement('div'); dslot.className='player-slot'; dslot.style.background='linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.08))';
+  const dtitle = document.createElement('div'); dtitle.className='player-name'; dtitle.textContent='Dealer';
+  const dmeta = document.createElement('div'); dmeta.className='status-line'; dmeta.textContent='Hidden card standard';
+  dslot.appendChild(dtitle); dslot.appendChild(dmeta);
+  const dwrap = document.createElement('div'); dwrap.className='cards'; dwrap.id='cards-dealer';
+  dslot.appendChild(dwrap);
+  playersArea.appendChild(dslot);
+}
+
+/* --------------------------- Betting & Bankroll --------------------------- */
+function updateBankrollDisplay(){
+  // update both UI and storage
+  $('bankrollDisplay').textContent = players.reduce((s,p)=>s+p.bankroll,0);
+  // persist per-player bankrolls
+  for(const p of players) storage.bankrolls[p.name] = p.bankroll;
+  saveStorage(storage);
+  renderPlayersArea(); // refresh chips
+}
+placeBetBtn.onclick = ()=>{
+  const b = parseInt(betInput.value,10) || 0;
+  if(b<=0){ log('Ungültiger Einsatz'); return; }
+  // place for current human (hotseat default is first player)
+  const p = players[0];
+  if(p.bankroll < b){ log(`${p.name} hat nicht genügend Bankroll`); return; }
+  p.hands[0].bet = b;
+  p.bankroll -= b;
+  log(`${p.name} setzt ${b} ♢`);
+  updateBankrollDisplay();
+  renderPlayersArea();
+};
+autoBetBtn.onclick = ()=>{ betInput.value = 10; placeBetBtn.click(); };
+
+/* --------------------------- Game flow: deal / hit / stand / double / split --------------------------- */
+function startRound(){
+  // ensure bets exist for all players (auto bet minimal if none)
   for(const p of players){
-    if(p.blackjack) log(`${p.name} hat Blackjack! (${p.getBestValue()})`);
+    if(p.hands[0].bet <= 0){
+      const min = Math.min(10, p.bankroll);
+      p.hands[0].bet = min;
+      p.bankroll -= min;
+      log(`${p.name} auto-bet ${min}`);
+    }
+    p.resetForRound = function(){}; // avoid resetting bankroll
+  }
+  dealer.resetForRound = function(){ dealer.hands = [{cards:[], bet:0, stand:false, busted:false, doubled:false}] };
+  deck.reset();
+  // initial deal: two cards to each player and dealer
+  for(let r=0;r<2;r++){
+    for(const p of players){ p.hands[0].cards.push(deck.draw()); }
+    dealer.hands[0].cards.push(deck.draw());
   }
   currentPlayerIndex = 0;
-  // skip dealer turn initially
-  if(players[currentPlayerIndex].type === 'dealer'){
-    // move to next human/bot
-    advanceToNextPlayer();
-  }
-  renderTable();
-  setStatus('Runde gestartet — Spieler 1 ist dran.');
+  currentHandIndex = 0;
+  renderAllHands(true);
+  setStatus('Karten ausgeteilt');
   dealBtn.disabled = true;
+  hitBtn.disabled = false;
+  standBtn.disabled = false;
+  doubleBtn.disabled = false;
+  splitBtn.disabled = false;
   nextBtn.disabled = false;
+  newRoundBtn.disabled = true;
+  // check immediate blackjacks
+  for(const p of players){ if(p.handIsBlackjack(p.hands[0])) log(`${p.name} hat Blackjack!`); }
   // if first player is bot, auto-play
   processCurrentIfBot();
 }
+dealBtn.onclick = ()=> startRound();
 
-/* Player actions */
-function playerHit(index){
-  const p = players[index];
-  if(p.stand || p.busted) return;
-  const card = deck.draw();
-  p.addCard(card);
-  log(`${p.name} zieht ${card.rank}${card.suit} → totale ${p.getBestValue()}`);
-  renderTable();
-  if(p.busted){
-    log(`${p.name} ist busted!`);
-    // auto advance
-    setTimeout(()=> {
-      advanceToNextPlayer();
-      renderTable();
-      processCurrentIfBot();
-    }, 400);
-  }
-}
-function playerStand(index){
-  const p = players[index];
-  p.stand = true;
-  log(`${p.name} steht mit ${p.getBestValue()}`);
-  advanceToNextPlayer();
-  renderTable();
-  processCurrentIfBot();
-}
-
-function advanceToNextPlayer(){
-  // advance until find a player who needs to play (not stand, not busted) OR reach dealer end
-  let i = currentPlayerIndex;
-  const n = players.length;
-  for(let t=1;t<=n;t++){
-    i = (currentPlayerIndex + t) % n;
+function renderAllHands(dealerHidden=true){
+  // players
+  for(let i=0;i<players.length;i++){
     const p = players[i];
-    if(p.type === 'dealer' && modeSel.value === 'vsDealer'){
-      // only dealer plays after all other players finished
-      const othersDone = players.slice(0, players.length-1).every(x => x.stand || x.busted || x.blackjack);
-      if(othersDone){
-        currentPlayerIndex = i;
-        return;
-      } else continue;
+    const wrap = $(`cards-${i}`);
+    if(!wrap) continue;
+    wrap.innerHTML = '';
+    for(const hand of p.hands){
+      for(const c of hand.cards){
+        const el = makeCardElement(c, false);
+        if(animOn) el.classList.add('deal-anim');
+        wrap.appendChild(el);
+      }
+      // if single-hand, spacing, else separate (simple)
+      const sep = document.createElement('div'); sep.style.width='8px'; wrap.appendChild(sep);
     }
-    if(!p.stand && !p.busted){
-      currentPlayerIndex = i;
-      return;
-    }
+    // update slot meta
+    const slot = document.querySelector(`.player-slot[data-index="${i}"] .status-line`);
+    if(slot) slot.textContent = `Bet: ${p.hands[0].bet} · Hands: ${p.hands.length} · Bankroll: ${p.bankroll}`;
   }
-  // if none found, move to dealer (if exists)
-  currentPlayerIndex = players.length - 1;
+  // dealer
+  const dw = $('cards-dealer'); dw.innerHTML='';
+  const dhand = dealer.hands[0];
+  for(let idx=0; idx<dhand.cards.length; idx++){
+    const c = dhand.cards[idx];
+    const el = makeCardElement(c, idx===1 && dealerHidden);
+    if(animOn) el.classList.add('deal-anim');
+    dw.appendChild(el);
+  }
 }
 
-/* Bot logic for current player */
+function revealDealer(){
+  renderAllHands(false);
+}
+
+function playerHit(){
+  const p = players[currentPlayerIndex];
+  const hand = p.hands[currentHandIndex];
+  const c = deck.draw();
+  hand.cards.push(c);
+  log(`${p.name} zieht ${c.rank}${c.suit} (Hand ${currentHandIndex+1}) → ${p.bestValueOfHand(hand)}`);
+  renderAllHands(true);
+  if(p.bestValueOfHand(hand) > 21){
+    hand.busted = true;
+    log(`${p.name} ist busted (Hand ${currentHandIndex+1})`);
+    // auto advance to next hand/player
+    setTimeout(()=> advanceNext(), 600);
+  }
+}
+hitBtn.onclick = ()=> playerHit();
+
+function playerStand(){
+  const p = players[currentPlayerIndex];
+  p.hands[currentHandIndex].stand = true;
+  log(`${p.name} steht (Hand ${currentHandIndex+1}) mit ${p.bestValueOfHand(p.hands[currentHandIndex])}`);
+  advanceNext();
+}
+standBtn.onclick = ()=> playerStand();
+
+function playerDouble(){
+  const p = players[currentPlayerIndex];
+  const h = p.hands[currentHandIndex];
+  if(p.bankroll < h.bet){ log('Nicht genug Bankroll zum Doubeln'); return; }
+  p.bankroll -= h.bet;
+  h.bet *= 2;
+  h.doubled = true;
+  const c = deck.draw(); h.cards.push(c);
+  log(`${p.name} doubled, zieht ${c.rank}${c.suit} → ${p.bestValueOfHand(h)}`);
+  renderAllHands(true); updateBankrollDisplay();
+  // after double, auto-stand on that hand
+  h.stand = true;
+  advanceNext();
+}
+doubleBtn.onclick = ()=> playerDouble();
+
+function playerSplit(){
+  const p = players[currentPlayerIndex];
+  const h = p.hands[currentHandIndex];
+  if(h.cards.length !== 2){ log('Split nur möglich bei genau 2 Karten'); return; }
+  if(h.cards[0].rank !== h.cards[1].rank){ log('Split nur bei gleichem Rang'); return; }
+  if(p.bankroll < h.bet){ log('Nicht genug Bankroll zum Splitten'); return; }
+  // do split: make two hands
+  const c1 = h.cards[0], c2 = h.cards[1];
+  p.bankroll -= h.bet;
+  p.hands.splice(currentHandIndex,1,
+    {cards:[c1], bet:h.bet, stand:false, busted:false, doubled:false},
+    {cards:[c2], bet:h.bet, stand:false, busted:false, doubled:false}
+  );
+  // draw one card to each newly created hand
+  p.hands[currentHandIndex].cards.push(deck.draw());
+  p.hands[currentHandIndex+1].cards.push(deck.draw());
+  log(`${p.name} split — zwei Hände mit Einsatz ${h.bet} each`);
+  renderAllHands(true); updateBankrollDisplay();
+}
+splitBtn.onclick = ()=> playerSplit();
+
+/* advance logic: cycle hands for current player, then players; then dealer */
+function advanceNext(){
+  // find next hand for current player
+  const p = players[currentPlayerIndex];
+  // if current player has more hands and next not finished -> move to next hand
+  if(currentHandIndex < p.hands.length - 1){
+    currentHandIndex++;
+    renderAllHands(true);
+    processCurrentIfBot();
+    return;
+  }
+  // else move to next player
+  let next = currentPlayerIndex + 1;
+  while(next < players.length && players[next].hands.every(h=>h.stand || h.busted || p.handIsBlackjack(h))) next++;
+  if(next < players.length){
+    currentPlayerIndex = next;
+    currentHandIndex = 0;
+    setStatus(`${players[currentPlayerIndex].name} ist am Zug`);
+    renderAllHands(true);
+    processCurrentIfBot();
+  } else {
+    // all players done -> dealer plays
+    setStatus('Dealer spielt');
+    revealDealer();
+    dealerPlay();
+  }
+}
+nextBtn.onclick = ()=> advanceNext();
+
+/* --------------------------- Dealer logic --------------------------- */
+function dealerPlay(){
+  // reveal dealer
+  renderAllHands(false);
+  // perform dealer hits until >=17
+  const play = ()=> {
+    const dhand = dealer.hands[0];
+    const val = dealer.bestValueOfHand(dhand);
+    if(val < 17){
+      const c = deck.draw(); dhand.cards.push(c);
+      log(`Dealer zieht ${c.rank}${c.suit} → ${dealer.bestValueOfHand(dhand)}`);
+      renderAllHands(false);
+      setTimeout(play, 700);
+    } else {
+      log(`Dealer steht mit ${val}`);
+      setTimeout(()=> finalizeRound(), 700);
+    }
+  };
+  setTimeout(play, 600);
+}
+
+/* --------------------------- Finalize round & payouts --------------------------- */
+function finalizeRound(){
+  // compute outcomes per player & hand
+  renderAllHands(false);
+  const dval = dealer.bestValueOfHand(dealer.hands[0]);
+  const dBlack = dealer.handIsBlackjack(dealer.hands[0]);
+  log(`--- Ergebnis (Dealer: ${dval}${dval>21?' BUST':''}) ---`);
+  for(const p of players){
+    for(const h of p.hands){
+      const hv = p.bestValueOfHand(h);
+      let res = '';
+      if(h.busted){ res = 'Verloren (busted)'; }
+      else if(p.handIsBlackjack(h) && !dBlack){
+        // blackjack payout 3:2
+        const win = Math.floor(h.bet * 1.5);
+        p.bankroll += h.bet + win;
+        res = `Blackjack! gewinnt ${win} (3:2)`;
+      } else if(dval>21){
+        p.bankroll += h.bet*2;
+        res = `Dealer busted → gewinnt ${h.bet}`;
+      } else if(hv > dval){
+        p.bankroll += h.bet*2;
+        res = `Gewonnen ${h.bet}`;
+      } else if(hv === dval){
+        p.bankroll += h.bet; // push return bet
+        res = 'Push (Einsatz zurück)';
+      } else {
+        res = 'Verloren';
+      }
+      log(`${p.name} Hand(${hv}) → ${res}`);
+    }
+  }
+  updateBankrollDisplay();
+  setStatus('Runde beendet');
+  // enable new round
+  newRoundBtn.disabled = false;
+  hitBtn.disabled = true; standBtn.disabled = true; doubleBtn.disabled=true; splitBtn.disabled=true; nextBtn.disabled=true;
+}
+newRoundBtn.onclick = ()=>{
+  // reset hands, allow new bets
+  for(const p of players) p.hands = [{cards:[],bet:0,stand:false,busted:false}];
+  dealer.hands = [{cards:[],bet:0,stand:false,busted:false}];
+  renderAllHands(true);
+  dealBtn.disabled = false;
+  newRoundBtn.disabled = true;
+  setStatus('Neue Runde — platziere Einsätze');
+};
+
+/* --------------------------- Bot logic (simple basic-ish strategy) --------------------------- */
+function botDecision(p){
+  // evaluate current hand
+  const h = p.hands[currentHandIndex];
+  const hv = p.bestValueOfHand(h);
+  const dealerUp = dealer.hands[0].cards[0];
+  const dealerUpVal = function(){
+    if(!dealerUp) return 10;
+    const r = dealerUp.rank;
+    if(r==='A') return 11;
+    if(['J','Q','K'].includes(r)) return 10;
+    return parseInt(r,10);
+  }();
+  // simplified strategy:
+  if(hv <= 11) return 'hit';
+  if(hv >= 17) return 'stand';
+  // 12-16: stand if dealer up 2-6, else hit
+  if(hv >=12 && hv <=16){
+    if(dealerUpVal >=2 && dealerUpVal <=6) return 'stand';
+    return 'hit';
+  }
+  return 'stand';
+}
+
 function processCurrentIfBot(){
   const p = players[currentPlayerIndex];
   if(!p) return;
   if(p.type === 'bot'){
-    // simple bot: draw if < 16, else stand (or if 16 draw with 40% chance maybe)
     setStatus(`${p.name} (Bot) spielt...`);
     setTimeout(()=>{
-      const val = p.getBestValue();
-      if(val < 17){
-        playerHit(currentPlayerIndex);
-      } else {
-        playerStand(currentPlayerIndex);
-      }
-    }, 600);
-  } else if(p.type === 'dealer' && modeSel.value === 'vsDealer'){
-    // dealer reveal then play dealer rules
-    revealDealerAndPlay();
+      const dec = botDecision(p);
+      if(dec==='hit') playerHit();
+      else playerStand();
+    }, 500 + Math.random()*600);
   } else {
-    setStatus(`${p.name} ist am Zug.`);
-  }
-
-  // if all players done and no dealer to play (free mode), end round
-  if(modeSel.value === 'free'){
-    const anyActive = players.some(x => (!x.stand && !x.busted) && x.type !== 'dealer');
-    if(!anyActive){
-      // end round (compare scores)
-      finalizeRound();
-    }
+    setStatus(`${p.name} ist am Zug`);
   }
 }
 
-/* Dealer reveal and play */
-function revealDealerAndPlay(){
-  const dealer = players[players.length-1];
-  dealer.revealed = true;
-  renderTable();
-  log('Dealer zeigt seine Karte.');
-  // Dealer plays: hits until >= 17
-  setTimeout(function dealerPlay(){
-    const v = dealer.getBestValue();
-    if(v < 17){
-      const c = deck.draw();
-      dealer.addCard(c);
-      log(`Dealer zieht ${c.rank}${c.suit} → ${dealer.getBestValue()}`);
-      renderTable();
-      if(!dealer.busted){
-        setTimeout(dealerPlay, 700);
-      } else {
-        log('Dealer busted!');
-        finalizeRound();
-      }
-    } else {
-      log(`Dealer steht mit ${v}`);
-      finalizeRound();
-    }
-  }, 800);
+/* --------------------------- WebRTC / Signaling (optional) --------------------------- */
+/* Hinweis: GitHub Pages bietet nur statische Dateien. Echtes Realtime benötigt:
+   - einen Signaling-Server (z.B. WebSocket) für Offer/Answer/ICE
+   - danach können zwei Clients per WebRTC DataChannel kommunizieren
+   Ich gebe eine optionale Hook: wenn du eine wss:// Signaling URL einträgst, versucht die Seite, sich zu verbinden.
+   Implementierung unten ist minimal: sendet/empfängt JSON-Nachrichten. Du musst auf dem Server die Nachrichten an andere Clients weiterleiten.
+*/
+let ws = null;
+let peerConnections = {}; // remoteId -> RTCPeerConnection
+let myId = `p_${Math.random().toString(36).slice(2,8)}`;
+function connectSignaling(url){
+  if(!url) { log('Keine Signaling URL gesetzt — Hotseat verwendet.'); return; }
+  try {
+    ws = new WebSocket(url);
+    ws.onopen = ()=> { log('Signaling verbunden'); ws.send(JSON.stringify({type:'join', id:myId})); setStatus('Signaling verbunden'); }
+    ws.onmessage = (ev)=> {
+      const data = JSON.parse(ev.data);
+      // server should forward messages between peers
+      if(data.to === myId) handleSignalMessage(data);
+    };
+    ws.onclose = ()=> { log('Signaling geschlossen'); setStatus('Signaling geschlossen'); ws=null; }
+    ws.onerror = (e)=> { log('Signaling Fehler'); console.error(e); }
+  } catch(e){ log('Fehler Verbindung Signaling'); }
 }
-
-/* Determine winners and show results */
-function finalizeRound(){
-  // reveal dealer if present
-  if(modeSel.value === 'vsDealer'){
-    const dealer = players[players.length-1];
-    dealer.revealed = true;
-    renderTable();
-    // Compare every non-dealer player to dealer
-    const dealerVal = dealer.getBestValue();
-    log(`--- Ergebnis (Dealer: ${dealerVal}${dealer.busted ? ' BUST' : ''}) ---`);
-    for(let i=0;i<players.length-1;i++){
-      const p = players[i];
-      const v = p.getBestValue();
-      let result = '';
-      if(p.busted) result = 'Verloren (busted)';
-      else if(p.blackjack && !dealer.blackjack) result = 'Blackjack! (Gewonnen)';
-      else if(dealer.busted) result = 'Dealer busted → Gewonnen';
-      else if(p.blackjack && dealer.blackjack) result = 'Push (beide Blackjack)';
-      else if(v > dealerVal) result = 'Gewonnen';
-      else if(v === dealerVal) result = 'Push';
-      else result = 'Verloren';
-      log(`${p.name} (${v}) → ${result}`);
-    }
-  } else {
-    // free mode: compare all human players — highest <=21 wins
-    const contenders = players.map(p => ({name:p.name,val:p.getBestValue(),busted:p.busted,blackjack:p.blackjack}));
-    // find best val <=21
-    let best = -1;
-    for(const c of contenders){
-      if(!c.busted && c.val <= 21){
-        if(c.val > best) best = c.val;
-      }
-    }
-    const winners = contenders.filter(c => !c.busted && c.val === best);
-    if(winners.length===0){
-      log('Alle sind busted. Niemand gewinnt.');
-    } else {
-      const names = winners.map(w => w.name).join(', ');
-      log(`Gewinner: ${names} mit ${best}`);
+function handleSignalMessage(msg){
+  // msg: {type:'offer'|'answer'|'ice'|'join', from, to, sdp/ice}
+  const from = msg.from;
+  if(msg.type === 'offer'){
+    // create peer, set remote desc, create answer...
+    createPeer(from, false).then(pc=>{
+      pc.setRemoteDescription(new RTCSessionDescription(msg.sdp)).then(()=>{
+        return pc.createAnswer();
+      }).then(answer=>{
+        return pc.setLocalDescription(answer);
+      }).then(()=>{
+        ws.send(JSON.stringify({type:'answer', from:myId, to:from, sdp: pc.localDescription}));
+      });
+    });
+  } else if(msg.type === 'answer'){
+    const pc = peerConnections[from];
+    if(pc) pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
+  } else if(msg.type === 'ice'){
+    const pc = peerConnections[from];
+    if(pc) pc.addIceCandidate(new RTCIceCandidate(msg.cand));
+  } else if(msg.type === 'join'){
+    // another peer joined; create offer to them
+    if(msg.id && msg.id !== myId){
+      createPeer(msg.id, true).then(pc=>{
+        pc.createOffer().then(offer=>{
+          return pc.setLocalDescription(offer);
+        }).then(()=>{
+          ws.send(JSON.stringify({type:'offer', from:myId, to: msg.id, sdp: pc.localDescription}));
+        });
+      });
     }
   }
-  // finalize UI
-  setStatus('Runde beendet.');
-  // disable action buttons
-  currentPlayerIndex = -1;
-  renderTable();
-  dealBtn.disabled = false;
-  nextBtn.disabled = true;
 }
-
-/* Buttons */
-setupBtn.onclick = () => {
-  renderPlayersConfig();
+async function createPeer(remoteId, isOffer){
+  const pc = new RTCPeerConnection();
+  peerConnections[remoteId] = pc;
+  const dc = pc.createDataChannel('bj');
+  dc.onopen = ()=> { log('DataChannel offen mit '+remoteId); };
+  dc.onmessage = (ev)=> { log(`Msg von ${remoteId}: ${ev.data}`); /* hier kann Spiel-Event-Sync implementiert werden */ };
+  pc.onicecandidate = (e)=> { if(e.candidate && ws) ws.send(JSON.stringify({type:'ice', from:myId, to:remoteId, cand:e.candidate})); };
+  pc.ondatachannel = (ev)=> { const ch = ev.channel; ch.onmessage = e=> log('DC msg: '+e.data); };
+  return pc;
+}
+$('saveSettings').onclick = ()=>{
+  // store bankroll default and signaling url
+  storage.settings = storage.settings || {};
+  storage.settings.defaultBankroll = parseInt(bankrollInput.value,10) || 1000;
+  storage.settings.signalUrl = signalUrlInput.value.trim();
+  saveStorage(storage);
+  log('Einstellungen gespeichert');
 };
-startBtn.onclick = () => {
-  // gather settings
-  mode = modeSel.value;
-  showTotals = showTotalsCheckbox.checked;
+$('resetStorage').onclick = ()=> { if(confirm('localStorage löschen?')) clearStorage(); };
+$('setupBtn').onclick = ()=> renderPlayersConfig();
+$('startBtn').onclick = ()=>{
   setupPlayersFromUI();
-  startGame();
-};
-dealBtn.onclick = ()=> {
-  // next round
-  for(const p of players) p.resetHand();
-  deck.reset();
-  startGame();
-};
-nextBtn.onclick = ()=> {
-  // allow to manually advance (useful if human stands)
-  // If current is human and hasn't stood, nothing. Otherwise advance.
-  if(currentPlayerIndex >=0 && players[currentPlayerIndex].type === 'human' && !players[currentPlayerIndex].stand && !players[currentPlayerIndex].busted){
-    setStatus(`${players[currentPlayerIndex].name} ist noch am Zug.`);
-    return;
-  }
-  advanceToNextPlayer();
-  renderTable();
-  processCurrentIfBot();
-};
-resetBtn.onclick = ()=> {
-  location.reload();
+  // try connect signaling if URL
+  const url = signalUrlInput.value.trim() || storage.settings?.signalUrl;
+  if(url) connectSignaling(url);
+  // enable deal button
+  dealBtn.disabled = false;
+  setStatus('Bereit — platziere Einsätze (oder Auto-Bet)');
+  animOn = animLevelSel.value !== '0';
+  $('animInfo').textContent = animOn ? 'on' : 'off';
+  renderPlayersArea();
 };
 
-showTotalsCheckbox.onchange = (e)=>{
-  renderTable();
+/* reveal force */
+revealBtn.onclick = ()=> revealDealer();
+
+/* explain webrtc */
+explainWebrtcBtn.onclick = ()=>{
+  alert('Echtzeit-Multiplayer benötigt einen Signaling-Server (z.B. WebSocket). Die Seite kann sich mit einer wss:// URL verbinden und dann Offer/Answer/ICE an andere Clients schicken. Der Server muss Clients identifizieren und Nachrichten weiterleiten. Nach Aufbau werden Spielereignisse über WebRTC DataChannel synchronisiert.');
 };
 
-/* Init */
+/* startup */
 renderPlayersConfig();
-setStatus('Bereit. Drücke Setup, passe Spieler an und starte das Spiel.');
+const stored = loadStorage();
+if(stored?.settings?.defaultBankroll) bankrollInput.value = stored.settings.defaultBankroll;
+if(stored?.settings?.signalUrl) signalUrlInput.value = stored.settings.signalUrl;
+setStatus('Bereit. Setup → Spieler konfigurieren → Start');
+
 </script>
 </body>
 </html>
