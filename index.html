@@ -5,14 +5,13 @@
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Collaborative 8000×8000 Pixel Canvas</title>
 <style>
-  html, body {
-    overscroll-behavior: none;
-    touch-action: none; /* verhindert Browser-eigenes Zoomen */
-    height:100%;
-    margin:0;
-    font-family: Arial, sans-serif;
+  html,body{
+    overscroll-behavior:none;
+    touch-action:none;
+    height:100%;margin:0;
+    font-family:Arial,sans-serif;
   }
-  #topbar {
+  #topbar{
     height:48px;
     background:#111;
     color:#fff;
@@ -21,31 +20,25 @@
     gap:12px;
     padding:6px 12px;
   }
-  #palette { display:flex; gap:6px; align-items:center; }
-  .color { width:28px; height:28px; border-radius:4px; cursor:pointer; border:2px solid #fff4; }
-  #canvasWrap {
+  #canvasWrap{
     position:relative;
     height:calc(100% - 48px);
     overflow:hidden;
     background:#fff;
   }
-  canvas {
+  canvas{
     display:block;
     transform-origin:0 0;
     cursor:crosshair;
-    background:transparent;
   }
-  #coords {
-    color:#ccc;
-    font-size:13px;
-    margin-left:20px;
+  #colorPicker{
+    width:40px;height:40px;
+    border:none;border-radius:4px;
+    cursor:pointer;
   }
-  #info {
-    color:#ddd;
-    font-size:13px;
-    margin-left:auto;
-  }
-  button {
+  #coords{color:#ccc;font-size:13px;margin-left:20px;}
+  #info{color:#ddd;font-size:13px;margin-left:auto;}
+  button{
     padding:6px 10px;
     border-radius:6px;
     border:none;
@@ -55,64 +48,55 @@
 </head>
 <body>
   <div id="topbar">
-    <div><strong>Collaborative Canvas (8000×8000)</strong></div>
-    <div id="palette"></div>
+    <strong>Collaborative Canvas (8000×8000)</strong>
+    <input type="color" id="colorPicker" value="#ff0000" title="Farbe wählen" />
     <div>Brush: <span id="brushSize">1</span></div>
     <input id="brushRange" type="range" min="1" max="8" value="1" />
     <button id="undoBtn">Undo</button>
     <div id="coords">x:0 y:0</div>
-    <div id="info">Zoom: <span id="zoomDisp">1x</span></div>
+    <div id="info">Zoom: <span id="zoomDisp">1×</span></div>
   </div>
 
-  <div id="canvasWrap">
-    <canvas id="viewCanvas"></canvas>
-  </div>
+  <div id="canvasWrap"><canvas id="viewCanvas"></canvas></div>
 
 <script type="module">
-/* =========== Firebase Config =========== */
-const firebaseConfig = {
-  apiKey: "AIzaSyDm1K1l_9vzjcbrCtoUEgM3z2c-gvmcBbU",
-  authDomain: "papergame-24427.firebaseapp.com",
-  projectId: "papergame-24427",
-  storageBucket: "papergame-24427.firebasestorage.app",
-  messagingSenderId: "44002603651",
-  appId: "1:44002603651:web:090bf8b799b364e16ce1b6"
+/* ===== Firebase Config ===== */
+const firebaseConfig={
+  apiKey:"AIzaSyDm1K1l_9vzjcbrCtoUEgM3z2c-gvmcBbU",
+  authDomain:"papergame-24427.firebaseapp.com",
+  projectId:"papergame-24427",
+  storageBucket:"papergame-24427.firebasestorage.app",
+  messagingSenderId:"44002603651",
+  appId:"1:44002603651:web:090bf8b799b364e16ce1b6"
 };
-/* ====================================== */
+/* =========================== */
 
-import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
-import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
+import{initializeApp}from"https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
+import{getAuth,signInAnonymously}from"https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
+import{getFirestore,doc,getDoc,setDoc,onSnapshot,serverTimestamp}from"https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
 
-const TILE_SIZE = 64;
-const CANVAS_SIZE = 8000;
-const TILE_COUNT = Math.ceil(CANVAS_SIZE / TILE_SIZE);
-const LOCAL_COOLDOWN_MS = 1000;
+const TILE_SIZE=64, CANVAS_SIZE=8000, TILE_COUNT=Math.ceil(CANVAS_SIZE/TILE_SIZE);
+const LOCAL_COOLDOWN_MS=5000;
 
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-let user = null;
-await signInAnonymously(auth).then(u => user = u.user);
+const app=initializeApp(firebaseConfig);
+const auth=getAuth(app);const db=getFirestore(app);
+let user=null;await signInAnonymously(auth).then(u=>user=u.user);
 
-const paletteEl = document.getElementById('palette');
-const colors = ["#000000","#ffffff","#ff0000","#00ff00","#0000ff","#ffff00","#ff00ff","#00ffff","#7f3300","#ff8c00"];
-let color = colors[2];
-const brushRange = document.getElementById('brushRange');
-const brushSizeDisp = document.getElementById('brushSize');
-brushRange.addEventListener('input', ()=> brushSizeDisp.textContent = brushRange.value);
-colors.forEach(c=>{
-  const d=document.createElement('div');d.className='color';d.style.background=c;
-  d.addEventListener('click',()=>color=c);paletteEl.appendChild(d);
-});
+const colorPicker=document.getElementById('colorPicker');
+let color=colorPicker.value;
+colorPicker.addEventListener('input',()=>color=colorPicker.value);
+const brushRange=document.getElementById('brushRange');
+const brushSizeDisp=document.getElementById('brushSize');
+brushRange.addEventListener('input',()=>brushSizeDisp.textContent=brushRange.value);
 
 const viewCanvas=document.getElementById('viewCanvas');
 const ctx=viewCanvas.getContext('2d',{alpha:false});
 ctx.imageSmoothingEnabled=false;
 let viewW=window.innerWidth,viewH=window.innerHeight-48;
 viewCanvas.width=viewW;viewCanvas.height=viewH;
+
 let scale=1,offsetX=0,offsetY=0;
-document.getElementById('zoomDisp').textContent=scale+'x';
+document.getElementById('zoomDisp').textContent=scale+'×';
 
 window.addEventListener('resize',()=>{
   viewW=window.innerWidth;viewH=window.innerHeight-48;
@@ -126,8 +110,7 @@ viewCanvas.addEventListener('mousedown',e=>{
 });
 window.addEventListener('mousemove',e=>{
   if(isPanning){
-    const dx=(e.clientX-lastPanX)/scale;
-    const dy=(e.clientY-lastPanY)/scale;
+    const dx=(e.clientX-lastPanX)/scale,dy=(e.clientY-lastPanY)/scale;
     offsetX-=dx;offsetY-=dy;
     lastPanX=e.clientX;lastPanY=e.clientY;
     clampOffset();redrawViewport();
@@ -135,31 +118,31 @@ window.addEventListener('mousemove',e=>{
 });
 window.addEventListener('mouseup',()=>isPanning=false);
 
-viewCanvas.addEventListener('mousemove',(e)=>{
+viewCanvas.addEventListener('mousemove',e=>{
   const rect=viewCanvas.getBoundingClientRect();
   const mx=e.clientX-rect.left,my=e.clientY-rect.top;
   const wx=Math.floor(offsetX+mx/scale),wy=Math.floor(offsetY+my/scale);
   document.getElementById('coords').textContent=`x:${wx} y:${wy}`;
 });
 
-viewCanvas.addEventListener('wheel',(e)=>{
+viewCanvas.addEventListener('wheel',e=>{
   e.preventDefault();
   const oldScale=scale;
   scale*=(e.deltaY<0)?1.1:0.9;
-  scale=Math.min(Math.max(scale,0.1),20);
+  scale=Math.min(Math.max(scale,0.1),40);
   const mx=e.clientX,my=e.clientY-48;
   const worldX=offsetX+mx/oldScale,worldY=offsetY+my/oldScale;
   offsetX=worldX-mx/scale;offsetY=worldY-my/scale;
   clampOffset();redrawViewport();
-  document.getElementById('zoomDisp').textContent=scale.toFixed(2)+'x';
+  document.getElementById('zoomDisp').textContent=scale.toFixed(2)+'×';
 },{passive:false});
 
-/* ---- Touch Gestures: Pinch-Zoom + Zwei-Finger-Pan ---- */
+/* Touch: Pinch + Pan */
 let lastTouchDistance=0,lastMidX=0,lastMidY=0;
-viewCanvas.addEventListener('touchmove',(e)=>{
+viewCanvas.addEventListener('touchmove',e=>{
   if(e.touches.length===2){
     e.preventDefault();
-    const [t1,t2]=e.touches;
+    const[t1,t2]=e.touches;
     const dx=t2.clientX-t1.clientX,dy=t2.clientY-t1.clientY;
     const dist=Math.sqrt(dx*dx+dy*dy);
     const midX=(t1.clientX+t2.clientX)/2;
@@ -168,7 +151,7 @@ viewCanvas.addEventListener('touchmove',(e)=>{
     const zoomFactor=dist/lastTouchDistance;
     if(Math.abs(zoomFactor-1)>0.02){
       const oldScale=scale;
-      scale*=zoomFactor;scale=Math.min(Math.max(scale,0.1),20);
+      scale*=zoomFactor;scale=Math.min(Math.max(scale,0.1),40);
       const worldX=offsetX+midX/oldScale,worldY=offsetY+midY/oldScale;
       offsetX=worldX-midX/scale;offsetY=worldY-midY/scale;
     }else{
@@ -176,7 +159,7 @@ viewCanvas.addEventListener('touchmove',(e)=>{
       offsetX+=moveX;offsetY+=moveY;
     }
     clampOffset();redrawViewport();
-    document.getElementById('zoomDisp').textContent=scale.toFixed(2)+'x';
+    document.getElementById('zoomDisp').textContent=scale.toFixed(2)+'×';
     lastTouchDistance=dist;lastMidX=midX;lastMidY=midY;
   }
 },{passive:false});
@@ -187,7 +170,7 @@ function clampOffset(){
   offsetY=Math.max(0,Math.min(offsetY,CANVAS_SIZE-viewH/scale));
 }
 
-/* --- Firestore Tile Handling --- */
+/* Firestore Tiles */
 const tileCache=new Map(),tileListeners=new Map();let lastPutTime=0;
 function worldToTileCoords(wx,wy){return{tx:Math.floor(wx/TILE_SIZE),ty:Math.floor(wy/TILE_SIZE)};}
 function tileKey(tx,ty){return`${tx}_${ty}`;}
@@ -203,23 +186,20 @@ function updateTileListeners(){
     }
   }
   for(const k of Array.from(tileListeners.keys())){
-    if(!wanted.has(k)){const u=tileListeners.get(k);if(typeof u==='function')u();tileListeners.delete(k);}
+    if(!wanted.has(k)){const u=tileListeners.get(k);if(u)u();tileListeners.delete(k);}
   }
 }
 function attachTileListener(tx,ty){
-  const id=tileKey(tx,ty);
-  const docRef=doc(db,"tiles",id);
-  const unsub=onSnapshot(docRef,snap=>{
+  const id=tileKey(tx,ty),ref=doc(db,"tiles",id);
+  const unsub=onSnapshot(ref,snap=>{
     if(!snap.exists()){tileCache.set(id,null);redrawViewport();return;}
-    const data=snap.data();
-    if(data&&data.png){
-      const img=new Image();
-      img.onload=()=>{tileCache.set(id,img);redrawViewport();};
-      img.src=data.png;
-    }else{tileCache.set(id,null);redrawViewport();}
+    const d=snap.data();
+    if(d&&d.png){const img=new Image();img.onload=()=>{tileCache.set(id,img);redrawViewport();};img.src=d.png;}
   });
   tileListeners.set(id,unsub);
 }
+
+/* Rendering */
 function redrawViewport(){
   ctx.clearRect(0,0,viewW,viewH);
   ctx.fillStyle="#fff";ctx.fillRect(0,0,viewW,viewH);
@@ -228,22 +208,28 @@ function redrawViewport(){
   const y1=Math.floor((offsetY+viewH/scale)/TILE_SIZE);
   for(let tx=Math.max(0,x0-1);tx<=Math.min(TILE_COUNT-1,x1+1);tx++){
     for(let ty=Math.max(0,y0-1);ty<=Math.min(TILE_COUNT-1,y1+1);ty++){
-      const id=tileKey(tx,ty);
-      const img=tileCache.get(id);
+      const id=tileKey(tx,ty),img=tileCache.get(id);
       const worldX=tx*TILE_SIZE,worldY=ty*TILE_SIZE;
       const screenX=Math.floor((worldX-offsetX)*scale);
       const screenY=Math.floor((worldY-offsetY)*scale);
       const screenSize=Math.ceil(TILE_SIZE*scale);
-      if(img instanceof HTMLImageElement){
+      if(img instanceof HTMLImageElement)
         ctx.drawImage(img,0,0,img.width,img.height,screenX,screenY,screenSize,screenSize);
-      }else{
-        ctx.strokeStyle="#eee";ctx.strokeRect(screenX,screenY,screenSize,screenSize);
-      }
     }
+  }
+  // schwarzes Pixelraster ab Zoom>15
+  if(scale>=15){
+    const pixelSize=scale;
+    const startX=-Math.floor(offsetX%1*scale);
+    const startY=-Math.floor(offsetY%1*scale);
+    ctx.strokeStyle="#000";
+    ctx.lineWidth=0.5;
+    for(let x=startX;x<viewW;x+=pixelSize){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,viewH);ctx.stroke();}
+    for(let y=startY;y<viewH;y+=pixelSize){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(viewW,y);ctx.stroke();}
   }
 }
 
-/* Pixel setzen */
+/* Zeichnen */
 const undoStack=[];
 document.getElementById('undoBtn').addEventListener('click',()=>{
   if(undoStack.length===0)return;
@@ -251,63 +237,62 @@ document.getElementById('undoBtn').addEventListener('click',()=>{
   applyPutToTileDoc(last.tx,last.ty,last.pngData);
 });
 async function drawFromPointer(e){
-  const rect=viewCanvas.getBoundingClientRect();
-  const mx=e.clientX-rect.left,my=e.clientY-rect.top;
-  const worldX=offsetX+mx/scale,worldY=offsetY+my/scale;
-  const b=parseInt(brushRange.value,10),half=Math.floor(b/2);
-  const px=Math.floor(worldX)-half,py=Math.floor(worldY)-half;
-  for(let dx=0;dx<b;dx++){
-    for(let dy=0;dy<b;dy++){
-      const wx=px+dx,wy=py+dy;
-      if(wx<0||wy<0||wx>=CANVAS_SIZE||wy>=CANVAS_SIZE)continue;
-      const{tx,ty}=worldToTileCoords(wx,wy);
-      await putPixelToTile(tx,ty,wx-tx*TILE_SIZE,wy-ty*TILE_SIZE,color);
-    }
+  const r=viewCanvas.getBoundingClientRect();
+  const mx=e.clientX-r.left,my=e.clientY-r.top;
+  const wx=offsetX+mx/scale,wy=offsetY+my/scale;
+  const b=parseInt(brushRange.value),half=Math.floor(b/2);
+  const px=Math.floor(wx)-half,py=Math.floor(wy)-half;
+  for(let dx=0;dx<b;dx++)for(let dy=0;dy<b;dy++){
+    const wx2=px+dx,wy2=py+dy;
+    if(wx2<0||wy2<0||wx2>=CANVAS_SIZE||wy2>=CANVAS_SIZE)continue;
+    const{tx,ty}=worldToTileCoords(wx2,wy2);
+    await putPixelToTile(tx,ty,wx2-tx*TILE_SIZE,wy2-ty*TILE_SIZE,color);
   }
 }
 async function loadTileCanvas(tx,ty){
-  const id=tileKey(tx,ty),tileDocRef=doc(db,"tiles",id);
-  const snap=await getDoc(tileDocRef);
-  const off=document.createElement('canvas');off.width=TILE_SIZE;off.height=TILE_SIZE;
+  const id=tileKey(tx,ty),ref=doc(db,"tiles",id);
+  const snap=await getDoc(ref);
+  const off=document.createElement('canvas');
+  off.width=TILE_SIZE;off.height=TILE_SIZE;
   const offCtx=off.getContext('2d');offCtx.imageSmoothingEnabled=false;
   if(snap.exists()&&snap.data().png){
     const img=new Image();
-    await new Promise(res=>{
-      img.onload=()=>{offCtx.drawImage(img,0,0,TILE_SIZE,TILE_SIZE);res();};
-      img.src=snap.data().png;
-    });
-  }else{offCtx.clearRect(0,0,TILE_SIZE,TILE_SIZE);}
+    await new Promise(res=>{img.onload=()=>{offCtx.drawImage(img,0,0,TILE_SIZE,TILE_SIZE);res();};img.src=snap.data().png;});
+  }
   return{off,offCtx};
 }
 async function putPixelToTile(tx,ty,localX,localY,hexColor){
   const now=Date.now();if(now-lastPutTime<LOCAL_COOLDOWN_MS)return;lastPutTime=now;
   const{off,offCtx}=await loadTileCanvas(tx,ty);
-  const prevPng=off.toDataURL("image/png");undoStack.push({tx,ty,pngData:prevPng});
+  const prev=off.toDataURL();undoStack.push({tx,ty,pngData:prev});
   const imgd=offCtx.getImageData(0,0,TILE_SIZE,TILE_SIZE);
   const idx=(Math.floor(localY)*TILE_SIZE+Math.floor(localX))*4;
   const rgba=hexToRgba(hexColor);
   imgd.data[idx]=rgba.r;imgd.data[idx+1]=rgba.g;imgd.data[idx+2]=rgba.b;imgd.data[idx+3]=rgba.a;
   offCtx.putImageData(imgd,0,0);
-  const pngData=off.toDataURL("image/png");
-  await applyPutToTileDoc(tx,ty,pngData);
+  const png=off.toDataURL("image/png");
+  await applyPutToTileDoc(tx,ty,png);
 }
 function hexToRgba(hex){
   const h=hex.replace('#','');
-  const r=parseInt(h.substr(0,2),16),g=parseInt(h.substr(2,2),16),b=parseInt(h.substr(4,2),16);
-  return{r,g,b,a:255};
+  return{
+    r:parseInt(h.substr(0,2),16),
+    g:parseInt(h.substr(2,2),16),
+    b:parseInt(h.substr(4,2),16),
+    a:255
+  };
 }
-async function applyPutToTileDoc(tx,ty,pngData){
-  const id=tileKey(tx,ty),ref=doc(db,"tiles",id);
-  await setDoc(ref,{png:pngData,updatedAt:serverTimestamp(),authorUid:user.uid},{merge:true});
-  const img=new Image();img.src=pngData;tileCache.set(id,img);redrawViewport();
+async function applyPutToTileDoc(tx,ty,png){
+  const id=tileKey(tx,ty);
+  await setDoc(doc(db,"tiles",id),{png,updatedAt:serverTimestamp(),authorUid:user.uid},{merge:true});
+  const img=new Image();img.src=png;tileCache.set(id,img);redrawViewport();
 }
 
-/* Startposition Mitte */
+/* Start */
 offsetX=(CANVAS_SIZE-viewW)/2;offsetY=(CANVAS_SIZE-viewH)/2;
 clampOffset();updateTileListeners();redrawViewport();
 setInterval(()=>updateTileListeners(),200);
-
-viewCanvas.addEventListener('click',(e)=>drawFromPointer(e));
+viewCanvas.addEventListener('click',e=>drawFromPointer(e));
 </script>
 </body>
 </html>
