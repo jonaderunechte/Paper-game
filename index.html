@@ -5,11 +5,15 @@
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Collaborative 8000×8000 Pixel Canvas</title>
 <style>
+  html, body {
+  overscroll-behavior: none;
+  touch-action: none; /* verhindert, dass Browser selbst zoomt */
+}
   html,body { height:100%; margin:0; font-family: Arial, sans-serif; }
   #topbar { height:48px; background:#111; color:#fff; display:flex; align-items:center; gap:12px; padding:6px 12px; }
   #palette { display:flex; gap:6px; align-items:center; }
   .color { width:28px; height:28px; border-radius:4px; cursor:pointer; border:2px solid #fff4; }
-  #canvasWrap { position:relative; height:calc(100% - 48px); overflow:hidden; background:#222; }
+  #canvasWrap { position:relative; height:calc(100% - 48px); overflow:hidden; background:#fff; }
   canvas { display:block; transform-origin:0 0; cursor:crosshair; background:transparent; }
   #info { color:#ddd; font-size:13px; margin-left:auto; }
   button { padding:6px 10px; border-radius:6px; border:none; cursor:pointer; }
@@ -125,6 +129,51 @@ viewCanvas.addEventListener('wheel', (e)=> {
   document.getElementById('zoomDisp').textContent = scale.toFixed(2) + 'x';
 }, { passive:false });
 
+  /* ---- Pinch-to-Zoom (zwei Finger) ---- */
+let lastTouchDistance = 0;
+
+viewCanvas.addEventListener('touchmove', (e) => {
+  if (e.touches.length === 2) {
+    e.preventDefault();
+
+    const [t1, t2] = e.touches;
+    const dx = t2.clientX - t1.clientX;
+    const dy = t2.clientY - t1.clientY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    if (lastTouchDistance === 0) {
+      lastTouchDistance = dist;
+      return;
+    }
+
+    const zoomFactor = dist / lastTouchDistance;
+    const oldScale = scale;
+    scale *= zoomFactor;
+    scale = Math.min(Math.max(scale, 0.1), 20);
+
+    // Zoomen zum Mittelpunkt der beiden Finger
+    const midX = (t1.clientX + t2.clientX) / 2;
+    const midY = (t1.clientY + t2.clientY) / 2 - 48; // abzüglich Topbar
+
+    const worldX = offsetX + midX / oldScale;
+    const worldY = offsetY + midY / oldScale;
+    offsetX = worldX - midX / scale;
+    offsetY = worldY - midY / scale;
+
+    clampOffset();
+    redrawViewport();
+
+    document.getElementById('zoomDisp').textContent = scale.toFixed(2) + 'x';
+    lastTouchDistance = dist;
+  }
+}, { passive: false });
+
+viewCanvas.addEventListener('touchend', (e) => {
+  if (e.touches.length < 2) {
+    lastTouchDistance = 0;
+  }
+});
+  
 function clampOffset() {
   offsetX = Math.max(0, Math.min(offsetX, CANVAS_SIZE - viewW/scale));
   offsetY = Math.max(0, Math.min(offsetY, CANVAS_SIZE - viewH/scale));
@@ -200,7 +249,7 @@ function attachTileListener(tx,ty){
 function redrawViewport(){
   ctx.clearRect(0,0,viewW,viewH);
   // background grid or fallback
-  ctx.fillStyle = "#222";
+  ctx.fillStyle = "#fff";
   ctx.fillRect(0,0,viewW,viewH);
 
   const x0 = Math.floor(offsetX / TILE_SIZE), y0 = Math.floor(offsetY / TILE_SIZE);
