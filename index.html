@@ -1,267 +1,383 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="de">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Blackjack Hotseat</title>
-<script src="https://cdn.tailwindcss.com"></script>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Collaborative 8000×8000 Pixel Canvas</title>
 <style>
-body {
-  font-family: 'Inter', sans-serif;
-  background: radial-gradient(circle at top, #0b0b0b, #1a1a1a);
-  color: #fff;
-  overflow-x: hidden;
-}
-#table {
-  max-width: 1200px;
-  margin: auto;
-  padding: 2rem;
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-.player-area {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  margin-top: 2rem;
-}
-.player {
-  margin: 1rem;
-  text-align: center;
-}
-.cards {
-  display: flex;
-  justify-content: center;
-  flex-wrap: wrap;
-  margin-top: 0.5rem;
-}
-.card {
-  width: 80px;
-  height: 120px;
-  border-radius: 8px;
-  background-color: #fff;
-  color: #000;
-  margin: 0 0.3rem;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  font-weight: bold;
-  font-size: 1.2rem;
-  perspective: 1000px;
-  cursor: pointer;
-  transition: transform 0.5s;
-  position: relative;
-}
-.card .front, .card .back {
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  border-radius: 8px;
-  backface-visibility: hidden;
-}
-.card .front {
-  background-color: #fff;
-  color: #000;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-.card .back {
-  background-image: url('https://raw.githubusercontent.com/USERNAME/REPO/main/card-back.png'); /* Pfad zur Kartenrückseite */
-  background-size: cover;
-  transform: rotateY(180deg);
-}
-.card.flipped {
-  transform: rotateY(180deg);
-}
-button {
-  padding: 0.5rem 1rem;
-  margin: 0.5rem;
-  border: none;
-  border-radius: 4px;
-  background-color: #4ade80;
-  color: #000;
-  font-weight: bold;
-  cursor: pointer;
-}
-button:hover {
-  background-color: #22c55e;
-}
-#dealer {
-  margin-bottom: 2rem;
-  text-align: center;
-}
-.hidden {
-  display: none;
-}
+  html,body { height:100%; margin:0; font-family: Arial, sans-serif; }
+  #topbar { height:48px; background:#111; color:#fff; display:flex; align-items:center; gap:12px; padding:6px 12px; }
+  #palette { display:flex; gap:6px; align-items:center; }
+  .color { width:28px; height:28px; border-radius:4px; cursor:pointer; border:2px solid #fff4; }
+  #canvasWrap { position:relative; height:calc(100% - 48px); overflow:hidden; background:#222; }
+  canvas { display:block; transform-origin:0 0; cursor:crosshair; background:transparent; }
+  #info { color:#ddd; font-size:13px; margin-left:auto; }
+  button { padding:6px 10px; border-radius:6px; border:none; cursor:pointer; }
 </style>
 </head>
 <body>
-<div id="table">
-  <div id="dealer">
-    <h2>Dealer</h2>
-    <div id="dealer-cards" class="cards"></div>
+  <div id="topbar">
+    <div><strong>Collaborative Canvas (8000×8000)</strong></div>
+    <div id="palette"></div>
+    <div>Brush: <span id="brushSize">1</span></div>
+    <input id="brushRange" type="range" min="1" max="8" value="1" />
+    <button id="undoBtn">Undo (client)</button>
+    <div id="info">Zoom: <span id="zoomDisp">1x</span></div>
   </div>
 
-  <div class="player-area" id="players"></div>
-
-  <div id="controls">
-    <button id="hit">Karte ziehen</button>
-    <button id="stand">Passen</button>
-    <button id="next">Nächster Spieler</button>
+  <div id="canvasWrap">
+    <canvas id="viewCanvas"></canvas>
   </div>
 
-  <div id="message" class="mt-4 text-yellow-400 font-bold"></div>
-</div>
+<script type="module">
+/* =========== CONFIG: Firebase Config hier eintragen =========== */
+const firebaseConfig = {
+  apiKey: "TODO_apiKey",
+  authDomain: "TODO.firebaseapp.com",
+  projectId: "TODO",
+  // ...rest optional
+};
+/* ============================================================ */
 
-<script>
-// Karten-Deck
-const suits = ['♠','♥','♦','♣'];
-const values = ['A','2','3','4','5','6','7','8','9','10','J','Q','K'];
-let deck = [];
-function createDeck() {
-  deck = [];
-  for(let s of suits){
-    for(let v of values){
-      deck.push({suit:s,value:v});
+/* Import Firebase (modular) via CDN */
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
+import { getFirestore, doc, getDoc, setDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
+
+const TILE_SIZE = 64;            // 64×64 Pixel Tiles
+const CANVAS_SIZE = 8000;        // Gesamtgröße
+const TILE_COUNT = Math.ceil(CANVAS_SIZE / TILE_SIZE); // 125
+const MAX_LISTEN_TILES = 9*9;    // max Anzahl paralleler Listener (Viewport abhängig)
+const LOCAL_COOLDOWN_MS = 5000;  // Client-seitiger Cooldown zwischen SetPixel (grundlegend: 5s)
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+let user = null;
+await signInAnonymously(auth)
+  .then(u => { user = u.user; console.log("anon uid:", user.uid); })
+  .catch(err => { alert("Firebase Auth Fehler: " + err.message); throw err; });
+
+/* UI Setup */
+const paletteEl = document.getElementById('palette');
+const colors = ["#000000","#ffffff","#ff0000","#00ff00","#0000ff","#ffff00","#ff00ff","#00ffff","#7f3300","#ff8c00"];
+let color = colors[2];
+const brushRange = document.getElementById('brushRange');
+const brushSizeDisp = document.getElementById('brushSize');
+brushRange.addEventListener('input', ()=> { brushSizeDisp.textContent = brushRange.value; });
+
+colors.forEach(c=>{
+  const d = document.createElement('div');
+  d.className = 'color';
+  d.style.background = c;
+  d.addEventListener('click', ()=> color = c);
+  paletteEl.appendChild(d);
+});
+
+/* Canvas + viewport handling (tiling, pan, zoom) */
+const viewCanvas = document.getElementById('viewCanvas');
+const ctx = viewCanvas.getContext('2d');
+let viewW = window.innerWidth;
+let viewH = window.innerHeight - 48;
+viewCanvas.width = viewW;
+viewCanvas.height = viewH;
+
+let scale = 1;            // zoom (1 = 1:1 pixels*scale)
+let offsetX = 0;         // top-left world coordinate shown
+let offsetY = 0;
+document.getElementById('zoomDisp').textContent = scale + 'x';
+
+window.addEventListener('resize', ()=> {
+  viewW = window.innerWidth; viewH = window.innerHeight - 48;
+  viewCanvas.width = viewW; viewCanvas.height = viewH; redrawViewport();
+});
+
+let isPanning=false, lastPanX=0, lastPanY=0;
+viewCanvas.addEventListener('mousedown', (e)=> {
+  if (e.button === 1 || e.ctrlKey) { isPanning=true; lastPanX = e.clientX; lastPanY = e.clientY; return; }
+  drawFromPointer(e);
+});
+window.addEventListener('mousemove', (e)=> {
+  if (isPanning) {
+    const dx = (e.clientX - lastPanX)/scale;
+    const dy = (e.clientY - lastPanY)/scale;
+    offsetX -= dx; offsetY -= dy;
+    lastPanX = e.clientX; lastPanY = e.clientY;
+    clampOffset(); redrawViewport();
+  }
+});
+window.addEventListener('mouseup', ()=> isPanning=false);
+viewCanvas.addEventListener('wheel', (e)=> {
+  e.preventDefault();
+  const oldScale = scale;
+  if (e.deltaY < 0) scale *= 1.1; else scale /= 1.1;
+  scale = Math.min(Math.max(scale, 0.1), 20);
+  // zoom to mouse position
+  const mx = e.clientX, my = e.clientY - 48;
+  const worldX = offsetX + mx/oldScale;
+  const worldY = offsetY + my/oldScale;
+  offsetX = worldX - mx/scale;
+  offsetY = worldY - my/scale;
+  clampOffset(); redrawViewport();
+  document.getElementById('zoomDisp').textContent = scale.toFixed(2) + 'x';
+}, { passive:false });
+
+function clampOffset() {
+  offsetX = Math.max(0, Math.min(offsetX, CANVAS_SIZE - viewW/scale));
+  offsetY = Math.max(0, Math.min(offsetY, CANVAS_SIZE - viewH/scale));
+}
+
+/* Tile cache and listeners */
+const tileCache = new Map();          // key -> Image object (or null placeholder)
+const tileListeners = new Map();      // key -> unsubscribe function
+let lastPutTime = 0;
+
+/* helpers */
+function worldToTileCoords(wx, wy) {
+  const tx = Math.floor(wx / TILE_SIZE);
+  const ty = Math.floor(wy / TILE_SIZE);
+  return {tx,ty};
+}
+function tileKey(tx,ty){ return `${tx}_${ty}`; }
+
+/* listen to tiles that intersect viewport */
+function updateTileListeners() {
+  // compute visible tile index range with some padding
+  const x0 = Math.floor(offsetX / TILE_SIZE), y0 = Math.floor(offsetY / TILE_SIZE);
+  const x1 = Math.floor((offsetX + viewW/scale) / TILE_SIZE);
+  const y1 = Math.floor((offsetY + viewH/scale) / TILE_SIZE);
+  const pad = 1; // load neighboring tiles
+  const wanted = new Set();
+  for (let tx = Math.max(0,x0-pad); tx <= Math.min(TILE_COUNT-1,x1+pad); tx++){
+    for (let ty = Math.max(0,y0-pad); ty <= Math.min(TILE_COUNT-1,y1+pad); ty++){
+      wanted.add(tileKey(tx,ty));
+      if (!tileListeners.has(tileKey(tx,ty))) {
+        attachTileListener(tx,ty);
+      }
     }
   }
-  deck = deck.sort(()=> Math.random() - 0.5);
-}
-createDeck();
-
-// Spieler
-const players = [
-  {id:'player1', name:'Spieler 1', hand: [], balance: 1000},
-  {id:'player2', name:'Spieler 2', hand: [], balance: 1000},
-  // weitere Spieler hier
-];
-let currentPlayerIndex = 0;
-const dealerHand = [];
-
-// HTML Referenzen
-const playersDiv = document.getElementById('players');
-const dealerCardsDiv = document.getElementById('dealer-cards');
-const messageDiv = document.getElementById('message');
-
-// Buttons
-const hitBtn = document.getElementById('hit');
-const standBtn = document.getElementById('stand');
-const nextBtn = document.getElementById('next');
-
-// Initialisierung
-function renderPlayers() {
-  playersDiv.innerHTML = '';
-  for(const p of players){
-    const div = document.createElement('div');
-    div.className = 'player';
-    div.id = p.id;
-    div.innerHTML = `<h3>${p.name} (Guthaben: ${p.balance} J€)</h3>
-                     <div class="cards" id="${p.id}-cards"></div>`;
-    playersDiv.appendChild(div);
+  // remove listeners for tiles no longer wanted
+  for (const k of Array.from(tileListeners.keys())) {
+    if (!wanted.has(k)) {
+      const unsub = tileListeners.get(k);
+      if (typeof unsub === 'function') unsub();
+      tileListeners.delete(k);
+      // keep cache though
+    }
   }
 }
 
-// Karten zeichnen
-function drawCard(){
-  return deck.pop();
+/* attach realtime listener for a single tile doc */
+function attachTileListener(tx,ty){
+  const id = tileKey(tx,ty);
+  const docRef = doc(db, "tiles", id);
+  const unsub = onSnapshot(docRef, snap => {
+    if (!snap.exists()) {
+      tileCache.set(id, null);
+      redrawViewport();
+      return;
+    }
+    const data = snap.data();
+    if (data && data.png) {
+      const img = new Image();
+      img.onload = ()=> { tileCache.set(id, img); redrawViewport(); };
+      img.onerror = ()=> { tileCache.set(id, null); redrawViewport(); };
+      img.src = data.png;
+    } else {
+      tileCache.set(id, null);
+      redrawViewport();
+    }
+  }, err => {
+    console.error("tile onSnapshot err", id, err);
+  });
+  tileListeners.set(id, unsub);
 }
 
-// Handwert berechnen
-function handValue(hand){
-  let value = 0;
-  let aces = 0;
-  for(let c of hand){
-    if(['J','Q','K'].includes(c.value)) value += 10;
-    else if(c.value==='A'){ value +=11; aces++; }
-    else value += parseInt(c.value);
+/* redraw: draw visible tiles from cache to the view canvas */
+function redrawViewport(){
+  ctx.clearRect(0,0,viewW,viewH);
+  // background grid or fallback
+  ctx.fillStyle = "#222";
+  ctx.fillRect(0,0,viewW,viewH);
+
+  const x0 = Math.floor(offsetX / TILE_SIZE), y0 = Math.floor(offsetY / TILE_SIZE);
+  const x1 = Math.floor((offsetX + viewW/scale) / TILE_SIZE);
+  const y1 = Math.floor((offsetY + viewH/scale) / TILE_SIZE);
+
+  for (let tx = Math.max(0,x0-1); tx <= Math.min(TILE_COUNT-1,x1+1); tx++){
+    for (let ty = Math.max(0,y0-1); ty <= Math.min(TILE_COUNT-1,y1+1); ty++){
+      const id = tileKey(tx,ty);
+      const img = tileCache.get(id);
+      const worldX = tx * TILE_SIZE;
+      const worldY = ty * TILE_SIZE;
+      const screenX = Math.round((worldX - offsetX) * scale);
+      const screenY = Math.round((worldY - offsetY) * scale);
+      const screenSize = Math.round(TILE_SIZE * scale);
+
+      if (img instanceof HTMLImageElement) {
+        // draw tiled image
+        ctx.drawImage(img, 0, 0, img.width, img.height, screenX, screenY, screenSize, screenSize);
+      } else {
+        // draw placeholder grid for missing tile
+        ctx.strokeStyle = "#333";
+        ctx.strokeRect(screenX, screenY, screenSize, screenSize);
+      }
+    }
   }
-  while(value>21 && aces>0){ value -=10; aces--; }
-  return value;
 }
 
-// Karten rendern
-function renderHand(hand, divId){
-  const div = document.getElementById(divId);
-  div.innerHTML = '';
-  for(const c of hand){
-    const cardDiv = document.createElement('div');
-    cardDiv.className = 'card flipped';
-    cardDiv.innerHTML = `<div class="front">${c.value}${c.suit}</div>
-                         <div class="back"></div>`;
-    div.appendChild(cardDiv);
-  }
-}
-
-// Spiel starten
-function startRound(){
-  createDeck();
-  dealerHand.length=0;
-  for(const p of players) p.hand=[];
-  // jeder Spieler bekommt 2 Karten
-  for(const p of players){
-    p.hand.push(drawCard());
-    p.hand.push(drawCard());
-    renderHand(p.hand, `${p.id}-cards`);
-  }
-  dealerHand.push(drawCard());
-  dealerHand.push(drawCard());
-  renderHand(dealerHand, 'dealer-cards');
-  messageDiv.textContent = `${players[currentPlayerIndex].name} ist am Zug.`;
-}
-startRound();
-
-// Button Events
-hitBtn.addEventListener('click', ()=>{
-  const player = players[currentPlayerIndex];
-  player.hand.push(drawCard());
-  renderHand(player.hand, `${player.id}-cards`);
-  const val = handValue(player.hand);
-  if(val>21){
-    messageDiv.textContent = `${player.name} hat verloren! (${val})`;
-  }
+/* click/draw handling:
+   - Convert mouse to world coords
+   - Determine affected tile(s) depending on brush size
+   - Update tile canvas, encode PNG, store to Firestore
+*/
+const undoStack = [];
+document.getElementById('undoBtn').addEventListener('click', ()=> {
+  if (undoStack.length === 0) return;
+  const last = undoStack.pop();
+  applyPutToTileDoc(last.tx, last.ty, last.pngData).catch(e=>console.error("undo failed",e));
 });
 
-standBtn.addEventListener('click', ()=>{
-  messageDiv.textContent = `${players[currentPlayerIndex].name} hat gepasst.`;
-});
+async function drawFromPointer(e) {
+  const rect = viewCanvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const worldX = offsetX + mx/scale;
+  const worldY = offsetY + my/scale;
+  const b = parseInt(brushRange.value,10);
 
-nextBtn.addEventListener('click', ()=>{
-  currentPlayerIndex++;
-  if(currentPlayerIndex>=players.length){
-    dealerPlay();
+  // compute affected pixel coordinates (centered)
+  const half = Math.floor(b/2);
+  const px = Math.floor(worldX) - half;
+  const py = Math.floor(worldY) - half;
+
+  // For each pixel in brush -> map to tile(s)
+  for (let dx=0; dx<b; dx++){
+    for (let dy=0; dy<b; dy++){
+      const wx = px + dx, wy = py + dy;
+      if (wx < 0 || wy < 0 || wx >= CANVAS_SIZE || wy >= CANVAS_SIZE) continue;
+      const {tx,ty} = worldToTileCoords(wx,wy);
+      await putPixelToTile(tx,ty, wx - tx*TILE_SIZE, wy - ty*TILE_SIZE, color);
+    }
+  }
+}
+
+/* Helper: load tile image into an offscreen canvas 64x64 and return context */
+async function loadTileCanvas(tx,ty){
+  const id = tileKey(tx,ty);
+  // ensure we have the latest png
+  const tileDocRef = doc(db, "tiles", id);
+  const snap = await getDoc(tileDocRef);
+  const off = document.createElement('canvas');
+  off.width = TILE_SIZE; off.height = TILE_SIZE;
+  const offCtx = off.getContext('2d');
+
+  if (snap.exists() && snap.data().png) {
+    const img = new Image();
+    await new Promise((res,rej)=> {
+      img.onload = ()=> { offCtx.drawImage(img, 0,0, TILE_SIZE, TILE_SIZE); res(); };
+      img.onerror = ()=> { offCtx.fillStyle="#0000"; offCtx.fillRect(0,0,TILE_SIZE,TILE_SIZE); res(); };
+      img.src = snap.data().png;
+    });
   } else {
-    messageDiv.textContent = `${players[currentPlayerIndex].name} ist am Zug.`;
+    // blank
+    offCtx.fillStyle = "#00000000";
+    offCtx.fillRect(0,0,TILE_SIZE,TILE_SIZE);
   }
-});
-
-// Dealer-Logik
-function dealerPlay(){
-  while(handValue(dealerHand)<17){
-    dealerHand.push(drawCard());
-    renderHand(dealerHand, 'dealer-cards');
-  }
-  // Ergebnis
-  const dealerVal = handValue(dealerHand);
-  let results = '';
-  for(const p of players){
-    const val = handValue(p.hand);
-    if(val>21) results += `${p.name} verliert (${val})\n`;
-    else if(dealerVal>21 || val>dealerVal) {results+=`${p.name} gewinnt!\n`; p.balance+=100;}
-    else if(val===dealerVal) results+=`${p.name} unentschieden\n`;
-    else {results+=`${p.name} verliert (${val})\n`; p.balance-=100;}
-  }
-  renderPlayers();
-  messageDiv.textContent = results;
-  currentPlayerIndex=0;
+  return {off, offCtx, tileSnap: snap};
 }
 
-// Sounds (Beispiel)
-function playSound(url){
-  const audio = new Audio(url);
-  audio.play();
+/* put pixel on tile and write updated PNG to Firestore */
+async function putPixelToTile(tx,ty, localX, localY, hexColor) {
+  // client-side cooldown
+  const now = Date.now();
+  if (now - lastPutTime < LOCAL_COOLDOWN_MS) {
+    console.warn("client cooldown active");
+    return;
+  }
+  lastPutTime = now;
+
+  // load tile into canvas
+  const {off, offCtx, tileSnap} = await loadTileCanvas(tx,ty);
+
+  // save undo (store previous png dataURL)
+  const prevPng = off.toDataURL("image/png");
+  undoStack.push({tx,ty,pngData: prevPng});
+
+  // set the pixel(s)
+  const imgd = offCtx.getImageData(0,0,TILE_SIZE,TILE_SIZE);
+  const idx = (Math.floor(localY) * TILE_SIZE + Math.floor(localX)) * 4;
+  const rgba = hexToRgba(hexColor);
+  imgd.data[idx] = rgba.r;
+  imgd.data[idx+1] = rgba.g;
+  imgd.data[idx+2] = rgba.b;
+  imgd.data[idx+3] = rgba.a;
+  offCtx.putImageData(imgd, 0, 0);
+
+  // encode
+  const pngData = off.toDataURL("image/png");
+
+  // apply to Firestore
+  await applyPutToTileDoc(tx,ty,pngData);
 }
 
-renderPlayers();
+function hexToRgba(hex) {
+  const h = hex.replace('#','');
+  const r = parseInt(h.substring(0,2),16);
+  const g = parseInt(h.substring(2,4),16);
+  const b = parseInt(h.substring(4,6),16);
+  return {r,g,b,a:255};
+}
+
+/* write tile doc */
+async function applyPutToTileDoc(tx,ty, pngData) {
+  const id = tileKey(tx,ty);
+  const tileDocRef = doc(db, "tiles", id);
+  // write: png, updatedAt, authorUid
+  try {
+    await setDoc(tileDocRef, {
+      png: pngData,
+      updatedAt: serverTimestamp(),
+      authorUid: user.uid
+    }, { merge: true });
+    // local cache update: create Image and set
+    const img = new Image();
+    img.src = pngData;
+    tileCache.set(id, img);
+    redrawViewport();
+  } catch (err) {
+    console.error("write tile failed", err);
+  }
+}
+
+/* initial camera: center */
+offsetX = (CANVAS_SIZE - viewW)/2;
+offsetY = (CANVAS_SIZE - viewH)/2;
+clampOffset();
+updateTileListeners();
+redrawViewport();
+
+/* update listeners whenever camera changes (pan/zoom) */
+let lastViewportUpdate = 0;
+function scheduleViewportUpdate(){
+  const now = Date.now();
+  if (now - lastViewportUpdate < 100) return;
+  lastViewportUpdate = now;
+  updateTileListeners();
+}
+setInterval(scheduleViewportUpdate, 150);
+
+/* map mouse clicks for drawing */
+viewCanvas.addEventListener('click', (e)=> { drawFromPointer(e); });
+
+/* simple touch support */
+viewCanvas.addEventListener('touchstart', (e)=> { e.preventDefault(); const t = e.touches[0]; drawFromPointer({clientX: t.clientX, clientY: t.clientY}); }, {passive:false});
+
+/* initial tile listeners: a few central tiles */
+updateTileListeners();
+redrawViewport();
+
+</script>
+</body>
+</html>
