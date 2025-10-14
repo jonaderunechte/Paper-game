@@ -5,44 +5,49 @@
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Collaborative 8000×8000 Pixel Canvas</title>
 <style>
-  html,body{
-    overscroll-behavior:none;
-    touch-action:none;
-    height:100%;margin:0;
-    font-family:Arial,sans-serif;
+  html, body {
+    overscroll-behavior: none;
+    touch-action: none;
+    height: 100%;
+    margin: 0;
+    font-family: Arial, sans-serif;
   }
-  #topbar{
-    height:48px;
-    background:#111;
-    color:#fff;
-    display:flex;
-    align-items:center;
-    gap:12px;
-    padding:6px 12px;
+  #topbar {
+    height: 48px;
+    background: #111;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 12px;
   }
-  #canvasWrap{
-    position:relative;
-    height:calc(100% - 48px);
-    overflow:hidden;
-    background:#fff;
+  #canvasWrap {
+    position: relative;
+    height: calc(100% - 48px);
+    overflow: hidden;
+    background: #fff;
   }
-  canvas{
-    display:block;
-    transform-origin:0 0;
-    cursor:crosshair;
+  canvas {
+    display: block;
+    transform-origin: 0 0;
+    cursor: crosshair;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
   }
-  #colorPicker{
-    width:40px;height:40px;
-    border:none;border-radius:4px;
-    cursor:pointer;
+  #colorPicker {
+    width: 40px;
+    height: 40px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
   }
-  #coords{color:#ccc;font-size:13px;margin-left:20px;}
-  #info{color:#ddd;font-size:13px;margin-left:auto;}
-  button{
-    padding:6px 10px;
-    border-radius:6px;
-    border:none;
-    cursor:pointer;
+  #coords { color: #ccc; font-size: 13px; margin-left: 20px; }
+  #info { color: #ddd; font-size: 13px; margin-left: auto; }
+  button {
+    padding: 6px 10px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
   }
 </style>
 </head>
@@ -61,238 +66,276 @@
 
 <script type="module">
 /* ===== Firebase Config ===== */
-const firebaseConfig={
-  apiKey:"AIzaSyDm1K1l_9vzjcbrCtoUEgM3z2c-gvmcBbU",
-  authDomain:"papergame-24427.firebaseapp.com",
-  projectId:"papergame-24427",
-  storageBucket:"papergame-24427.firebasestorage.app",
-  messagingSenderId:"44002603651",
-  appId:"1:44002603651:web:090bf8b799b364e16ce1b6"
+const firebaseConfig = {
+  apiKey: "AIzaSyDm1K1l_9vzjcbrCtoUEgM3z2c-gvmcBbU",
+  authDomain: "papergame-24427.firebaseapp.com",
+  projectId: "papergame-24427",
+  storageBucket: "papergame-24427.firebasestorage.app",
+  messagingSenderId: "44002603651",
+  appId: "1:44002603651:web:090bf8b799b364e16ce1b6"
 };
 /* =========================== */
 
-import{initializeApp}from"https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
-import{getAuth,signInAnonymously}from"https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
-import{getFirestore,doc,getDoc,setDoc,onSnapshot,serverTimestamp}from"https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
+import { getFirestore, doc, getDoc, setDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
 
-const TILE_SIZE=64, CANVAS_SIZE=8000, TILE_COUNT=Math.ceil(CANVAS_SIZE/TILE_SIZE);
-const LOCAL_COOLDOWN_MS=5000;
+const TILE_SIZE = 64;
+const CANVAS_SIZE = 8000;
+const TILE_COUNT = Math.ceil(CANVAS_SIZE / TILE_SIZE);
+const LOCAL_COOLDOWN_MS = 5000;
 
-const app=initializeApp(firebaseConfig);
-const auth=getAuth(app);const db=getFirestore(app);
-let user=null;await signInAnonymously(auth).then(u=>user=u.user);
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+let user = null;
+await signInAnonymously(auth).then(u => user = u.user);
 
-const colorPicker=document.getElementById('colorPicker');
-let color=colorPicker.value;
-colorPicker.addEventListener('input',()=>color=colorPicker.value);
-const brushRange=document.getElementById('brushRange');
-const brushSizeDisp=document.getElementById('brushSize');
-brushRange.addEventListener('input',()=>brushSizeDisp.textContent=brushRange.value);
+/* --- UI --- */
+const colorPicker = document.getElementById('colorPicker');
+let color = colorPicker.value;
+colorPicker.addEventListener('input', () => color = colorPicker.value);
+const brushRange = document.getElementById('brushRange');
+const brushSizeDisp = document.getElementById('brushSize');
+brushRange.addEventListener('input', () => brushSizeDisp.textContent = brushRange.value);
 
-const viewCanvas=document.getElementById('viewCanvas');
-const ctx=viewCanvas.getContext('2d',{alpha:false});
-ctx.imageSmoothingEnabled=false;
-let viewW=window.innerWidth,viewH=window.innerHeight-48;
-viewCanvas.width=viewW;viewCanvas.height=viewH;
+const viewCanvas = document.getElementById('viewCanvas');
+const ctx = viewCanvas.getContext('2d', { alpha: false });
+ctx.imageSmoothingEnabled = false;
+ctx.webkitImageSmoothingEnabled = false;
+ctx.mozImageSmoothingEnabled = false;
 
-let scale=1,offsetX=0,offsetY=0;
-document.getElementById('zoomDisp').textContent=scale+'×';
+let viewW = window.innerWidth, viewH = window.innerHeight - 48;
+viewCanvas.width = viewW;
+viewCanvas.height = viewH;
 
-window.addEventListener('resize',()=>{
-  viewW=window.innerWidth;viewH=window.innerHeight-48;
-  viewCanvas.width=viewW;viewCanvas.height=viewH;redrawViewport();
+let scale = 1, offsetX = 0, offsetY = 0;
+document.getElementById('zoomDisp').textContent = scale + '×';
+
+window.addEventListener('resize', () => {
+  viewW = window.innerWidth; viewH = window.innerHeight - 48;
+  viewCanvas.width = viewW; viewCanvas.height = viewH; redrawViewport();
 });
 
-let isPanning=false,lastPanX=0,lastPanY=0;
-viewCanvas.addEventListener('mousedown',e=>{
-  if(e.button===1||e.ctrlKey){isPanning=true;lastPanX=e.clientX;lastPanY=e.clientY;return;}
+let isPanning = false, lastPanX = 0, lastPanY = 0;
+viewCanvas.addEventListener('mousedown', e => {
+  if (e.button === 1 || e.ctrlKey) { isPanning = true; lastPanX = e.clientX; lastPanY = e.clientY; return; }
   drawFromPointer(e);
 });
-window.addEventListener('mousemove',e=>{
-  if(isPanning){
-    const dx=(e.clientX-lastPanX)/scale,dy=(e.clientY-lastPanY)/scale;
-    offsetX-=dx;offsetY-=dy;
-    lastPanX=e.clientX;lastPanY=e.clientY;
-    clampOffset();redrawViewport();
+window.addEventListener('mousemove', e => {
+  if (isPanning) {
+    const dx = (e.clientX - lastPanX) / scale;
+    const dy = (e.clientY - lastPanY) / scale;
+    offsetX -= dx; offsetY -= dy;
+    lastPanX = e.clientX; lastPanY = e.clientY;
+    clampOffset(); redrawViewport();
   }
 });
-window.addEventListener('mouseup',()=>isPanning=false);
+window.addEventListener('mouseup', () => isPanning = false);
 
-viewCanvas.addEventListener('mousemove',e=>{
-  const rect=viewCanvas.getBoundingClientRect();
-  const mx=e.clientX-rect.left,my=e.clientY-rect.top;
-  const wx=Math.floor(offsetX+mx/scale),wy=Math.floor(offsetY+my/scale);
-  document.getElementById('coords').textContent=`x:${wx} y:${wy}`;
+/* Maus-Koordinaten anzeigen */
+viewCanvas.addEventListener('mousemove', e => {
+  const rect = viewCanvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  const wx = Math.floor(offsetX + mx / scale), wy = Math.floor(offsetY + my / scale);
+  document.getElementById('coords').textContent = `x:${wx} y:${wy}`;
 });
 
-viewCanvas.addEventListener('wheel',e=>{
+/* Zoom mit Mausrad */
+viewCanvas.addEventListener('wheel', e => {
   e.preventDefault();
-  const oldScale=scale;
-  scale*=(e.deltaY<0)?1.1:0.9;
-  scale=Math.min(Math.max(scale,0.1),40);
-  const mx=e.clientX,my=e.clientY-48;
-  const worldX=offsetX+mx/oldScale,worldY=offsetY+my/oldScale;
-  offsetX=worldX-mx/scale;offsetY=worldY-my/scale;
-  clampOffset();redrawViewport();
-  document.getElementById('zoomDisp').textContent=scale.toFixed(2)+'×';
-},{passive:false});
+  const oldScale = scale;
+  scale *= (e.deltaY < 0) ? 1.1 : 0.9;
+  scale = Math.min(Math.max(scale, 0.1), 40);
+  const mx = e.clientX, my = e.clientY - 48;
+  const worldX = offsetX + mx / oldScale, worldY = offsetY + my / oldScale;
+  offsetX = worldX - mx / scale; offsetY = worldY - my / scale;
+  clampOffset(); redrawViewport();
+  document.getElementById('zoomDisp').textContent = scale.toFixed(2) + '×';
+}, { passive: false });
 
 /* Touch: Pinch + Pan */
-let lastTouchDistance=0,lastMidX=0,lastMidY=0;
-viewCanvas.addEventListener('touchmove',e=>{
-  if(e.touches.length===2){
+let lastTouchDistance = 0, lastMidX = 0, lastMidY = 0;
+viewCanvas.addEventListener('touchmove', e => {
+  if (e.touches.length === 2) {
     e.preventDefault();
-    const[t1,t2]=e.touches;
-    const dx=t2.clientX-t1.clientX,dy=t2.clientY-t1.clientY;
-    const dist=Math.sqrt(dx*dx+dy*dy);
-    const midX=(t1.clientX+t2.clientX)/2;
-    const midY=(t1.clientY+t2.clientY)/2-48;
-    if(lastTouchDistance===0){lastTouchDistance=dist;lastMidX=midX;lastMidY=midY;return;}
-    const zoomFactor=dist/lastTouchDistance;
-    if(Math.abs(zoomFactor-1)>0.02){
-      const oldScale=scale;
-      scale*=zoomFactor;scale=Math.min(Math.max(scale,0.1),40);
-      const worldX=offsetX+midX/oldScale,worldY=offsetY+midY/oldScale;
-      offsetX=worldX-midX/scale;offsetY=worldY-midY/scale;
-    }else{
-      const moveX=(lastMidX-midX)/scale,moveY=(lastMidY-midY)/scale;
-      offsetX+=moveX;offsetY+=moveY;
+    const [t1, t2] = e.touches;
+    const dx = t2.clientX - t1.clientX, dy = t2.clientY - t1.clientY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const midX = (t1.clientX + t2.clientX) / 2;
+    const midY = (t1.clientY + t2.clientY) / 2 - 48;
+    if (lastTouchDistance === 0) { lastTouchDistance = dist; lastMidX = midX; lastMidY = midY; return; }
+    const zoomFactor = dist / lastTouchDistance;
+    if (Math.abs(zoomFactor - 1) > 0.02) {
+      const oldScale = scale;
+      scale *= zoomFactor; scale = Math.min(Math.max(scale, 0.1), 40);
+      const worldX = offsetX + midX / oldScale, worldY = offsetY + midY / oldScale;
+      offsetX = worldX - midX / scale; offsetY = worldY - midY / scale;
+    } else {
+      const moveX = (lastMidX - midX) / scale, moveY = (lastMidY - midY) / scale;
+      offsetX += moveX; offsetY += moveY;
     }
-    clampOffset();redrawViewport();
-    document.getElementById('zoomDisp').textContent=scale.toFixed(2)+'×';
-    lastTouchDistance=dist;lastMidX=midX;lastMidY=midY;
+    clampOffset(); redrawViewport();
+    document.getElementById('zoomDisp').textContent = scale.toFixed(2) + '×';
+    lastTouchDistance = dist; lastMidX = midX; lastMidY = midY;
   }
-},{passive:false});
-viewCanvas.addEventListener('touchend',()=>{lastTouchDistance=0;});
+}, { passive: false });
+viewCanvas.addEventListener('touchend', () => { lastTouchDistance = 0; });
 
-function clampOffset(){
-  offsetX=Math.max(0,Math.min(offsetX,CANVAS_SIZE-viewW/scale));
-  offsetY=Math.max(0,Math.min(offsetY,CANVAS_SIZE-viewH/scale));
+function clampOffset() {
+  offsetX = Math.max(0, Math.min(offsetX, CANVAS_SIZE - viewW / scale));
+  offsetY = Math.max(0, Math.min(offsetY, CANVAS_SIZE - viewH / scale));
 }
 
-/* Firestore Tiles */
-const tileCache=new Map(),tileListeners=new Map();let lastPutTime=0;
-function worldToTileCoords(wx,wy){return{tx:Math.floor(wx/TILE_SIZE),ty:Math.floor(wy/TILE_SIZE)};}
-function tileKey(tx,ty){return`${tx}_${ty}`;}
-function updateTileListeners(){
-  const x0=Math.floor(offsetX/TILE_SIZE),y0=Math.floor(offsetY/TILE_SIZE);
-  const x1=Math.floor((offsetX+viewW/scale)/TILE_SIZE);
-  const y1=Math.floor((offsetY+viewH/scale)/TILE_SIZE);
-  const pad=1,wanted=new Set();
-  for(let tx=Math.max(0,x0-pad);tx<=Math.min(TILE_COUNT-1,x1+pad);tx++){
-    for(let ty=Math.max(0,y0-pad);ty<=Math.min(TILE_COUNT-1,y1+pad);ty++){
-      wanted.add(tileKey(tx,ty));
-      if(!tileListeners.has(tileKey(tx,ty)))attachTileListener(tx,ty);
+/* --- Firestore Tiles --- */
+const tileCache = new Map(), tileListeners = new Map(); let lastPutTime = 0;
+function worldToTileCoords(wx, wy) { return { tx: Math.floor(wx / TILE_SIZE), ty: Math.floor(wy / TILE_SIZE) }; }
+function tileKey(tx, ty) { return `${tx}_${ty}`; }
+
+function updateTileListeners() {
+  const x0 = Math.floor(offsetX / TILE_SIZE), y0 = Math.floor(offsetY / TILE_SIZE);
+  const x1 = Math.floor((offsetX + viewW / scale) / TILE_SIZE);
+  const y1 = Math.floor((offsetY + viewH / scale) / TILE_SIZE);
+  const pad = 1, wanted = new Set();
+  for (let tx = Math.max(0, x0 - pad); tx <= Math.min(TILE_COUNT - 1, x1 + pad); tx++) {
+    for (let ty = Math.max(0, y0 - pad); ty <= Math.min(TILE_COUNT - 1, y1 + pad); ty++) {
+      wanted.add(tileKey(tx, ty));
+      if (!tileListeners.has(tileKey(tx, ty))) attachTileListener(tx, ty);
     }
   }
-  for(const k of Array.from(tileListeners.keys())){
-    if(!wanted.has(k)){const u=tileListeners.get(k);if(u)u();tileListeners.delete(k);}
+  for (const k of Array.from(tileListeners.keys())) {
+    if (!wanted.has(k)) { const u = tileListeners.get(k); if (u) u(); tileListeners.delete(k); }
   }
 }
-function attachTileListener(tx,ty){
-  const id=tileKey(tx,ty),ref=doc(db,"tiles",id);
-  const unsub=onSnapshot(ref,snap=>{
-    if(!snap.exists()){tileCache.set(id,null);redrawViewport();return;}
-    const d=snap.data();
-    if(d&&d.png){const img=new Image();img.onload=()=>{tileCache.set(id,img);redrawViewport();};img.src=d.png;}
+
+function attachTileListener(tx, ty) {
+  const id = tileKey(tx, ty), ref = doc(db, "tiles", id);
+  const unsub = onSnapshot(ref, snap => {
+    if (!snap.exists()) { tileCache.set(id, null); redrawViewport(); return; }
+    const d = snap.data();
+    if (d && d.png) {
+      const img = new Image();
+      img.onload = () => { tileCache.set(id, img); redrawViewport(); };
+      img.src = d.png;
+    }
   });
-  tileListeners.set(id,unsub);
+  tileListeners.set(id, unsub);
 }
 
-/* Rendering */
-function redrawViewport(){
-  ctx.clearRect(0,0,viewW,viewH);
-  ctx.fillStyle="#fff";ctx.fillRect(0,0,viewW,viewH);
-  const x0=Math.floor(offsetX/TILE_SIZE),y0=Math.floor(offsetY/TILE_SIZE);
-  const x1=Math.floor((offsetX+viewW/scale)/TILE_SIZE);
-  const y1=Math.floor((offsetY+viewH/scale)/TILE_SIZE);
-  for(let tx=Math.max(0,x0-1);tx<=Math.min(TILE_COUNT-1,x1+1);tx++){
-    for(let ty=Math.max(0,y0-1);ty<=Math.min(TILE_COUNT-1,y1+1);ty++){
-      const id=tileKey(tx,ty),img=tileCache.get(id);
-      const worldX=tx*TILE_SIZE,worldY=ty*TILE_SIZE;
-      const screenX=Math.floor((worldX-offsetX)*scale);
-      const screenY=Math.floor((worldY-offsetY)*scale);
-      const screenSize=Math.ceil(TILE_SIZE*scale);
-      if(img instanceof HTMLImageElement)
-        ctx.drawImage(img,0,0,img.width,img.height,screenX,screenY,screenSize,screenSize);
+/* --- Zeichnen / Rendern --- */
+function redrawViewport() {
+  ctx.clearRect(0, 0, viewW, viewH);
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, viewW, viewH);
+  const x0 = Math.floor(offsetX / TILE_SIZE), y0 = Math.floor(offsetY / TILE_SIZE);
+  const x1 = Math.floor((offsetX + viewW / scale) / TILE_SIZE);
+  const y1 = Math.floor((offsetY + viewH / scale) / TILE_SIZE);
+  ctx.imageSmoothingEnabled = false;
+  ctx.webkitImageSmoothingEnabled = false;
+  ctx.mozImageSmoothingEnabled = false;
+
+  for (let tx = Math.max(0, x0 - 1); tx <= Math.min(TILE_COUNT - 1, x1 + 1); tx++) {
+    for (let ty = Math.max(0, y0 - 1); ty <= Math.min(TILE_COUNT - 1, y1 + 1); ty++) {
+      const id = tileKey(tx, ty), img = tileCache.get(id);
+      const worldX = tx * TILE_SIZE, worldY = ty * TILE_SIZE;
+      const screenX = Math.floor((worldX - offsetX) * scale);
+      const screenY = Math.floor((worldY - offsetY) * scale);
+      const screenSize = Math.ceil(TILE_SIZE * scale);
+      if (img instanceof HTMLImageElement) {
+        ctx.drawImage(img, 0, 0, img.width, img.height, screenX, screenY, screenSize, screenSize);
+      }
     }
   }
-  // schwarzes Pixelraster ab Zoom>15
-  if(scale>=15){
-    const pixelSize=scale;
-    const startX=-Math.floor(offsetX%1*scale);
-    const startY=-Math.floor(offsetY%1*scale);
-    ctx.strokeStyle="#000";
-    ctx.lineWidth=0.5;
-    for(let x=startX;x<viewW;x+=pixelSize){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,viewH);ctx.stroke();}
-    for(let y=startY;y<viewH;y+=pixelSize){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(viewW,y);ctx.stroke();}
+
+  // Schwarzes Gitter ab Zoom >= 15
+  if (scale >= 15) {
+    const pixelSize = scale;
+    const startX = -Math.floor(offsetX % 1 * scale);
+    const startY = -Math.floor(offsetY % 1 * scale);
+    ctx.strokeStyle = "#000";
+    ctx.lineWidth = 0.5;
+    for (let x = startX; x < viewW; x += pixelSize) {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, viewH); ctx.stroke();
+    }
+    for (let y = startY; y < viewH; y += pixelSize) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(viewW, y); ctx.stroke();
+    }
   }
 }
 
-/* Zeichnen */
-const undoStack=[];
-document.getElementById('undoBtn').addEventListener('click',()=>{
-  if(undoStack.length===0)return;
-  const last=undoStack.pop();
-  applyPutToTileDoc(last.tx,last.ty,last.pngData);
+/* Pixel setzen */
+const undoStack = [];
+document.getElementById('undoBtn').addEventListener('click', () => {
+  if (undoStack.length === 0) return;
+  const last = undoStack.pop();
+  applyPutToTileDoc(last.tx, last.ty, last.pngData);
 });
-async function drawFromPointer(e){
-  const r=viewCanvas.getBoundingClientRect();
-  const mx=e.clientX-r.left,my=e.clientY-r.top;
-  const wx=offsetX+mx/scale,wy=offsetY+my/scale;
-  const b=parseInt(brushRange.value),half=Math.floor(b/2);
-  const px=Math.floor(wx)-half,py=Math.floor(wy)-half;
-  for(let dx=0;dx<b;dx++)for(let dy=0;dy<b;dy++){
-    const wx2=px+dx,wy2=py+dy;
-    if(wx2<0||wy2<0||wx2>=CANVAS_SIZE||wy2>=CANVAS_SIZE)continue;
-    const{tx,ty}=worldToTileCoords(wx2,wy2);
-    await putPixelToTile(tx,ty,wx2-tx*TILE_SIZE,wy2-ty*TILE_SIZE,color);
+
+async function drawFromPointer(e) {
+  const r = viewCanvas.getBoundingClientRect();
+  const mx = e.clientX - r.left, my = e.clientY - r.top;
+  const wx = offsetX + mx / scale, wy = offsetY + my / scale;
+  const b = parseInt(brushRange.value), half = Math.floor(b / 2);
+  const px = Math.floor(wx) - half, py = Math.floor(wy) - half;
+  for (let dx = 0; dx < b; dx++)
+    for (let dy = 0; dy < b; dy++) {
+      const wx2 = px + dx, wy2 = py + dy;
+      if (wx2 < 0 || wy2 < 0 || wx2 >= CANVAS_SIZE || wy2 >= CANVAS_SIZE) continue;
+      const { tx, ty } = worldToTileCoords(wx2, wy2);
+      await putPixelToTile(tx, ty, wx2 - tx * TILE_SIZE, wy2 - ty * TILE_SIZE, color);
+    }
+}
+
+async function loadTileCanvas(tx, ty) {
+  const id = tileKey(tx, ty), ref = doc(db, "tiles", id);
+  const snap = await getDoc(ref);
+  const off = document.createElement('canvas');
+  off.width = TILE_SIZE; off.height = TILE_SIZE;
+  const offCtx = off.getContext('2d');
+  offCtx.imageSmoothingEnabled = false;
+  offCtx.webkitImageSmoothingEnabled = false;
+  offCtx.mozImageSmoothingEnabled = false;
+  if (snap.exists() && snap.data().png) {
+    const img = new Image();
+    await new Promise(res => { img.onload = () => { offCtx.drawImage(img, 0, 0, TILE_SIZE, TILE_SIZE); res(); }; img.src = snap.data().png; });
   }
+  return { off, offCtx };
 }
-async function loadTileCanvas(tx,ty){
-  const id=tileKey(tx,ty),ref=doc(db,"tiles",id);
-  const snap=await getDoc(ref);
-  const off=document.createElement('canvas');
-  off.width=TILE_SIZE;off.height=TILE_SIZE;
-  const offCtx=off.getContext('2d');offCtx.imageSmoothingEnabled=false;
-  if(snap.exists()&&snap.data().png){
-    const img=new Image();
-    await new Promise(res=>{img.onload=()=>{offCtx.drawImage(img,0,0,TILE_SIZE,TILE_SIZE);res();};img.src=snap.data().png;});
-  }
-  return{off,offCtx};
+
+async function putPixelToTile(tx, ty, localX, localY, hexColor) {
+  const now = Date.now(); if (now - lastPutTime < LOCAL_COOLDOWN_MS) return; lastPutTime = now;
+  const { off, offCtx } = await loadTileCanvas(tx, ty);
+  const prev = off.toDataURL(); undoStack.push({ tx, ty, pngData: prev });
+  const imgd = offCtx.getImageData(0, 0, TILE_SIZE, TILE_SIZE);
+  const idx = (Math.floor(localY) * TILE_SIZE + Math.floor(localX)) * 4;
+  const rgba = hexToRgba(hexColor);
+  imgd.data[idx] = rgba.r; imgd.data[idx + 1] = rgba.g; imgd.data[idx + 2] = rgba.b; imgd.data[idx + 3] = rgba.a;
+  offCtx.putImageData(imgd, 0, 0);
+  const png = off.toDataURL("image/png");
+  await applyPutToTileDoc(tx, ty, png);
 }
-async function putPixelToTile(tx,ty,localX,localY,hexColor){
-  const now=Date.now();if(now-lastPutTime<LOCAL_COOLDOWN_MS)return;lastPutTime=now;
-  const{off,offCtx}=await loadTileCanvas(tx,ty);
-  const prev=off.toDataURL();undoStack.push({tx,ty,pngData:prev});
-  const imgd=offCtx.getImageData(0,0,TILE_SIZE,TILE_SIZE);
-  const idx=(Math.floor(localY)*TILE_SIZE+Math.floor(localX))*4;
-  const rgba=hexToRgba(hexColor);
-  imgd.data[idx]=rgba.r;imgd.data[idx+1]=rgba.g;imgd.data[idx+2]=rgba.b;imgd.data[idx+3]=rgba.a;
-  offCtx.putImageData(imgd,0,0);
-  const png=off.toDataURL("image/png");
-  await applyPutToTileDoc(tx,ty,png);
-}
-function hexToRgba(hex){
-  const h=hex.replace('#','');
-  return{
-    r:parseInt(h.substr(0,2),16),
-    g:parseInt(h.substr(2,2),16),
-    b:parseInt(h.substr(4,2),16),
-    a:255
+
+function hexToRgba(hex) {
+  const h = hex.replace('#', '');
+  return {
+    r: parseInt(h.substr(0, 2), 16),
+    g: parseInt(h.substr(2, 2), 16),
+    b: parseInt(h.substr(4, 2), 16),
+    a: 255
   };
 }
-async function applyPutToTileDoc(tx,ty,png){
-  const id=tileKey(tx,ty);
-  await setDoc(doc(db,"tiles",id),{png,updatedAt:serverTimestamp(),authorUid:user.uid},{merge:true});
-  const img=new Image();img.src=png;tileCache.set(id,img);redrawViewport();
+
+async function applyPutToTileDoc(tx, ty, png) {
+  const id = tileKey(tx, ty);
+  await setDoc(doc(db, "tiles", id), { png, updatedAt: serverTimestamp(), authorUid: user.uid }, { merge: true });
+  const img = new Image(); img.src = png; tileCache.set(id, img); redrawViewport();
 }
 
-/* Start */
-offsetX=(CANVAS_SIZE-viewW)/2;offsetY=(CANVAS_SIZE-viewH)/2;
-clampOffset();updateTileListeners();redrawViewport();
-setInterval(()=>updateTileListeners(),200);
-viewCanvas.addEventListener('click',e=>drawFromPointer(e));
+/* Startposition Mitte */
+offsetX = (CANVAS_SIZE - viewW) / 2; offsetY = (CANVAS_SIZE - viewH) / 2;
+clampOffset(); updateTileListeners(); redrawViewport();
+setInterval(() => updateTileListeners(), 200);
+viewCanvas.addEventListener('click', e => drawFromPointer(e));
 </script>
 </body>
 </html>
