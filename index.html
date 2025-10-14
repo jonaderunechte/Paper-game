@@ -6,17 +6,51 @@
 <title>Collaborative 8000×8000 Pixel Canvas</title>
 <style>
   html, body {
-  overscroll-behavior: none;
-  touch-action: none; /* verhindert, dass Browser selbst zoomt */
-}
-  html,body { height:100%; margin:0; font-family: Arial, sans-serif; }
-  #topbar { height:48px; background:#111; color:#fff; display:flex; align-items:center; gap:12px; padding:6px 12px; }
+    overscroll-behavior: none;
+    touch-action: none; /* verhindert Browser-eigenes Zoomen */
+    height:100%;
+    margin:0;
+    font-family: Arial, sans-serif;
+  }
+  #topbar {
+    height:48px;
+    background:#111;
+    color:#fff;
+    display:flex;
+    align-items:center;
+    gap:12px;
+    padding:6px 12px;
+  }
   #palette { display:flex; gap:6px; align-items:center; }
   .color { width:28px; height:28px; border-radius:4px; cursor:pointer; border:2px solid #fff4; }
-  #canvasWrap { position:relative; height:calc(100% - 48px); overflow:hidden; background:#fff; }
-  canvas { display:block; transform-origin:0 0; cursor:crosshair; background:transparent; }
-  #info { color:#ddd; font-size:13px; margin-left:auto; }
-  button { padding:6px 10px; border-radius:6px; border:none; cursor:pointer; }
+  #canvasWrap {
+    position:relative;
+    height:calc(100% - 48px);
+    overflow:hidden;
+    background:#fff;
+  }
+  canvas {
+    display:block;
+    transform-origin:0 0;
+    cursor:crosshair;
+    background:transparent;
+  }
+  #coords {
+    color:#ccc;
+    font-size:13px;
+    margin-left:20px;
+  }
+  #info {
+    color:#ddd;
+    font-size:13px;
+    margin-left:auto;
+  }
+  button {
+    padding:6px 10px;
+    border-radius:6px;
+    border:none;
+    cursor:pointer;
+  }
 </style>
 </head>
 <body>
@@ -25,7 +59,8 @@
     <div id="palette"></div>
     <div>Brush: <span id="brushSize">1</span></div>
     <input id="brushRange" type="range" min="1" max="8" value="1" />
-    <button id="undoBtn">Undo (client)</button>
+    <button id="undoBtn">Undo</button>
+    <div id="coords">x:0 y:0</div>
     <div id="info">Zoom: <span id="zoomDisp">1x</span></div>
   </div>
 
@@ -34,7 +69,7 @@
   </div>
 
 <script type="module">
-/* =========== CONFIG: Firebase Config hier eintragen =========== */
+/* =========== Firebase Config =========== */
 const firebaseConfig = {
   apiKey: "AIzaSyDm1K1l_9vzjcbrCtoUEgM3z2c-gvmcBbU",
   authDomain: "papergame-24427.firebaseapp.com",
@@ -43,392 +78,236 @@ const firebaseConfig = {
   messagingSenderId: "44002603651",
   appId: "1:44002603651:web:090bf8b799b364e16ce1b6"
 };
-/* ============================================================ */
+/* ====================================== */
 
-/* Import Firebase (modular) via CDN */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
 import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
 import { getFirestore, doc, getDoc, setDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
 
-const TILE_SIZE = 64;            // 64×64 Pixel Tiles
-const CANVAS_SIZE = 8000;        // Gesamtgröße
-const TILE_COUNT = Math.ceil(CANVAS_SIZE / TILE_SIZE); // 125
-const MAX_LISTEN_TILES = 9*9;    // max Anzahl paralleler Listener (Viewport abhängig)
-const LOCAL_COOLDOWN_MS = 5000;  // Client-seitiger Cooldown zwischen SetPixel (grundlegend: 5s)
+const TILE_SIZE = 64;
+const CANVAS_SIZE = 8000;
+const TILE_COUNT = Math.ceil(CANVAS_SIZE / TILE_SIZE);
+const LOCAL_COOLDOWN_MS = 5000;
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-
 let user = null;
-await signInAnonymously(auth)
-  .then(u => { user = u.user; console.log("anon uid:", user.uid); })
-  .catch(err => { alert("Firebase Auth Fehler: " + err.message); throw err; });
+await signInAnonymously(auth).then(u => user = u.user);
 
-/* UI Setup */
 const paletteEl = document.getElementById('palette');
 const colors = ["#000000","#ffffff","#ff0000","#00ff00","#0000ff","#ffff00","#ff00ff","#00ffff","#7f3300","#ff8c00"];
 let color = colors[2];
 const brushRange = document.getElementById('brushRange');
 const brushSizeDisp = document.getElementById('brushSize');
-brushRange.addEventListener('input', ()=> { brushSizeDisp.textContent = brushRange.value; });
-
+brushRange.addEventListener('input', ()=> brushSizeDisp.textContent = brushRange.value);
 colors.forEach(c=>{
-  const d = document.createElement('div');
-  d.className = 'color';
-  d.style.background = c;
-  d.addEventListener('click', ()=> color = c);
-  paletteEl.appendChild(d);
+  const d=document.createElement('div');d.className='color';d.style.background=c;
+  d.addEventListener('click',()=>color=c);paletteEl.appendChild(d);
 });
 
-/* Canvas + viewport handling (tiling, pan, zoom) */
-const viewCanvas = document.getElementById('viewCanvas');
-const ctx = viewCanvas.getContext('2d');
-let viewW = window.innerWidth;
-let viewH = window.innerHeight - 48;
-viewCanvas.width = viewW;
-viewCanvas.height = viewH;
+const viewCanvas=document.getElementById('viewCanvas');
+const ctx=viewCanvas.getContext('2d',{alpha:false});
+ctx.imageSmoothingEnabled=false;
+let viewW=window.innerWidth,viewH=window.innerHeight-48;
+viewCanvas.width=viewW;viewCanvas.height=viewH;
+let scale=1,offsetX=0,offsetY=0;
+document.getElementById('zoomDisp').textContent=scale+'x';
 
-let scale = 1;            // zoom (1 = 1:1 pixels*scale)
-let offsetX = 0;         // top-left world coordinate shown
-let offsetY = 0;
-document.getElementById('zoomDisp').textContent = scale + 'x';
-
-window.addEventListener('resize', ()=> {
-  viewW = window.innerWidth; viewH = window.innerHeight - 48;
-  viewCanvas.width = viewW; viewCanvas.height = viewH; redrawViewport();
+window.addEventListener('resize',()=>{
+  viewW=window.innerWidth;viewH=window.innerHeight-48;
+  viewCanvas.width=viewW;viewCanvas.height=viewH;redrawViewport();
 });
 
-let isPanning=false, lastPanX=0, lastPanY=0;
-viewCanvas.addEventListener('mousedown', (e)=> {
-  if (e.button === 1 || e.ctrlKey) { isPanning=true; lastPanX = e.clientX; lastPanY = e.clientY; return; }
+let isPanning=false,lastPanX=0,lastPanY=0;
+viewCanvas.addEventListener('mousedown',e=>{
+  if(e.button===1||e.ctrlKey){isPanning=true;lastPanX=e.clientX;lastPanY=e.clientY;return;}
   drawFromPointer(e);
 });
-window.addEventListener('mousemove', (e)=> {
-  if (isPanning) {
-    const dx = (e.clientX - lastPanX)/scale;
-    const dy = (e.clientY - lastPanY)/scale;
-    offsetX -= dx; offsetY -= dy;
-    lastPanX = e.clientX; lastPanY = e.clientY;
-    clampOffset(); redrawViewport();
+window.addEventListener('mousemove',e=>{
+  if(isPanning){
+    const dx=(e.clientX-lastPanX)/scale;
+    const dy=(e.clientY-lastPanY)/scale;
+    offsetX-=dx;offsetY-=dy;
+    lastPanX=e.clientX;lastPanY=e.clientY;
+    clampOffset();redrawViewport();
   }
 });
-window.addEventListener('mouseup', ()=> isPanning=false);
-viewCanvas.addEventListener('wheel', (e)=> {
+window.addEventListener('mouseup',()=>isPanning=false);
+
+viewCanvas.addEventListener('mousemove',(e)=>{
+  const rect=viewCanvas.getBoundingClientRect();
+  const mx=e.clientX-rect.left,my=e.clientY-rect.top;
+  const wx=Math.floor(offsetX+mx/scale),wy=Math.floor(offsetY+my/scale);
+  document.getElementById('coords').textContent=`x:${wx} y:${wy}`;
+});
+
+viewCanvas.addEventListener('wheel',(e)=>{
   e.preventDefault();
-  const oldScale = scale;
-  if (e.deltaY < 0) scale *= 1.1; else scale /= 1.1;
-  scale = Math.min(Math.max(scale, 0.1), 20);
-  // zoom to mouse position
-  const mx = e.clientX, my = e.clientY - 48;
-  const worldX = offsetX + mx/oldScale;
-  const worldY = offsetY + my/oldScale;
-  offsetX = worldX - mx/scale;
-  offsetY = worldY - my/scale;
-  clampOffset(); redrawViewport();
-  document.getElementById('zoomDisp').textContent = scale.toFixed(2) + 'x';
-}, { passive:false });
+  const oldScale=scale;
+  scale*=(e.deltaY<0)?1.1:0.9;
+  scale=Math.min(Math.max(scale,0.1),20);
+  const mx=e.clientX,my=e.clientY-48;
+  const worldX=offsetX+mx/oldScale,worldY=offsetY+my/oldScale;
+  offsetX=worldX-mx/scale;offsetY=worldY-my/scale;
+  clampOffset();redrawViewport();
+  document.getElementById('zoomDisp').textContent=scale.toFixed(2)+'x';
+},{passive:false});
 
-  /* ---- Pinch-to-Zoom (zwei Finger) ---- */
-let lastTouchDistance = 0;
-
-viewCanvas.addEventListener('touchmove', (e) => {
-  if (e.touches.length === 2) {
+/* ---- Touch Gestures: Pinch-Zoom + Zwei-Finger-Pan ---- */
+let lastTouchDistance=0,lastMidX=0,lastMidY=0;
+viewCanvas.addEventListener('touchmove',(e)=>{
+  if(e.touches.length===2){
     e.preventDefault();
-
-    const [t1, t2] = e.touches;
-    const dx = t2.clientX - t1.clientX;
-    const dy = t2.clientY - t1.clientY;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-
-    if (lastTouchDistance === 0) {
-      lastTouchDistance = dist;
-      return;
+    const [t1,t2]=e.touches;
+    const dx=t2.clientX-t1.clientX,dy=t2.clientY-t1.clientY;
+    const dist=Math.sqrt(dx*dx+dy*dy);
+    const midX=(t1.clientX+t2.clientX)/2;
+    const midY=(t1.clientY+t2.clientY)/2-48;
+    if(lastTouchDistance===0){lastTouchDistance=dist;lastMidX=midX;lastMidY=midY;return;}
+    const zoomFactor=dist/lastTouchDistance;
+    if(Math.abs(zoomFactor-1)>0.02){
+      const oldScale=scale;
+      scale*=zoomFactor;scale=Math.min(Math.max(scale,0.1),20);
+      const worldX=offsetX+midX/oldScale,worldY=offsetY+midY/oldScale;
+      offsetX=worldX-midX/scale;offsetY=worldY-midY/scale;
+    }else{
+      const moveX=(lastMidX-midX)/scale,moveY=(lastMidY-midY)/scale;
+      offsetX+=moveX;offsetY+=moveY;
     }
-
-    const zoomFactor = dist / lastTouchDistance;
-    const oldScale = scale;
-    scale *= zoomFactor;
-    scale = Math.min(Math.max(scale, 0.1), 20);
-
-    // Zoomen zum Mittelpunkt der beiden Finger
-    const midX = (t1.clientX + t2.clientX) / 2;
-    const midY = (t1.clientY + t2.clientY) / 2 - 48; // abzüglich Topbar
-
-    const worldX = offsetX + midX / oldScale;
-    const worldY = offsetY + midY / oldScale;
-    offsetX = worldX - midX / scale;
-    offsetY = worldY - midY / scale;
-
-    clampOffset();
-    redrawViewport();
-
-    document.getElementById('zoomDisp').textContent = scale.toFixed(2) + 'x';
-    lastTouchDistance = dist;
+    clampOffset();redrawViewport();
+    document.getElementById('zoomDisp').textContent=scale.toFixed(2)+'x';
+    lastTouchDistance=dist;lastMidX=midX;lastMidY=midY;
   }
-}, { passive: false });
+},{passive:false});
+viewCanvas.addEventListener('touchend',()=>{lastTouchDistance=0;});
 
-viewCanvas.addEventListener('touchend', (e) => {
-  if (e.touches.length < 2) {
-    lastTouchDistance = 0;
-  }
-});
-  
-function clampOffset() {
-  offsetX = Math.max(0, Math.min(offsetX, CANVAS_SIZE - viewW/scale));
-  offsetY = Math.max(0, Math.min(offsetY, CANVAS_SIZE - viewH/scale));
+function clampOffset(){
+  offsetX=Math.max(0,Math.min(offsetX,CANVAS_SIZE-viewW/scale));
+  offsetY=Math.max(0,Math.min(offsetY,CANVAS_SIZE-viewH/scale));
 }
 
-/* Tile cache and listeners */
-const tileCache = new Map();          // key -> Image object (or null placeholder)
-const tileListeners = new Map();      // key -> unsubscribe function
-let lastPutTime = 0;
-
-/* helpers */
-function worldToTileCoords(wx, wy) {
-  const tx = Math.floor(wx / TILE_SIZE);
-  const ty = Math.floor(wy / TILE_SIZE);
-  return {tx,ty};
-}
-function tileKey(tx,ty){ return `${tx}_${ty}`; }
-
-/* listen to tiles that intersect viewport */
-function updateTileListeners() {
-  // compute visible tile index range with some padding
-  const x0 = Math.floor(offsetX / TILE_SIZE), y0 = Math.floor(offsetY / TILE_SIZE);
-  const x1 = Math.floor((offsetX + viewW/scale) / TILE_SIZE);
-  const y1 = Math.floor((offsetY + viewH/scale) / TILE_SIZE);
-  const pad = 1; // load neighboring tiles
-  const wanted = new Set();
-  for (let tx = Math.max(0,x0-pad); tx <= Math.min(TILE_COUNT-1,x1+pad); tx++){
-    for (let ty = Math.max(0,y0-pad); ty <= Math.min(TILE_COUNT-1,y1+pad); ty++){
+/* --- Firestore Tile Handling --- */
+const tileCache=new Map(),tileListeners=new Map();let lastPutTime=0;
+function worldToTileCoords(wx,wy){return{tx:Math.floor(wx/TILE_SIZE),ty:Math.floor(wy/TILE_SIZE)};}
+function tileKey(tx,ty){return`${tx}_${ty}`;}
+function updateTileListeners(){
+  const x0=Math.floor(offsetX/TILE_SIZE),y0=Math.floor(offsetY/TILE_SIZE);
+  const x1=Math.floor((offsetX+viewW/scale)/TILE_SIZE);
+  const y1=Math.floor((offsetY+viewH/scale)/TILE_SIZE);
+  const pad=1,wanted=new Set();
+  for(let tx=Math.max(0,x0-pad);tx<=Math.min(TILE_COUNT-1,x1+pad);tx++){
+    for(let ty=Math.max(0,y0-pad);ty<=Math.min(TILE_COUNT-1,y1+pad);ty++){
       wanted.add(tileKey(tx,ty));
-      if (!tileListeners.has(tileKey(tx,ty))) {
-        attachTileListener(tx,ty);
-      }
+      if(!tileListeners.has(tileKey(tx,ty)))attachTileListener(tx,ty);
     }
   }
-  // remove listeners for tiles no longer wanted
-  for (const k of Array.from(tileListeners.keys())) {
-    if (!wanted.has(k)) {
-      const unsub = tileListeners.get(k);
-      if (typeof unsub === 'function') unsub();
-      tileListeners.delete(k);
-      // keep cache though
-    }
+  for(const k of Array.from(tileListeners.keys())){
+    if(!wanted.has(k)){const u=tileListeners.get(k);if(typeof u==='function')u();tileListeners.delete(k);}
   }
 }
-
-/* attach realtime listener for a single tile doc */
 function attachTileListener(tx,ty){
-  const id = tileKey(tx,ty);
-  const docRef = doc(db, "tiles", id);
-  const unsub = onSnapshot(docRef, snap => {
-    if (!snap.exists()) {
-      tileCache.set(id, null);
-      redrawViewport();
-      return;
-    }
-    const data = snap.data();
-    if (data && data.png) {
-      const img = new Image();
-      img.onload = ()=> { tileCache.set(id, img); redrawViewport(); };
-      img.onerror = ()=> { tileCache.set(id, null); redrawViewport(); };
-      img.src = data.png;
-    } else {
-      tileCache.set(id, null);
-      redrawViewport();
-    }
-  }, err => {
-    console.error("tile onSnapshot err", id, err);
+  const id=tileKey(tx,ty);
+  const docRef=doc(db,"tiles",id);
+  const unsub=onSnapshot(docRef,snap=>{
+    if(!snap.exists()){tileCache.set(id,null);redrawViewport();return;}
+    const data=snap.data();
+    if(data&&data.png){
+      const img=new Image();
+      img.onload=()=>{tileCache.set(id,img);redrawViewport();};
+      img.src=data.png;
+    }else{tileCache.set(id,null);redrawViewport();}
   });
-  tileListeners.set(id, unsub);
+  tileListeners.set(id,unsub);
 }
-
-/* redraw: draw visible tiles from cache to the view canvas */
 function redrawViewport(){
   ctx.clearRect(0,0,viewW,viewH);
-  // background grid or fallback
-  ctx.fillStyle = "#fff";
-  ctx.fillRect(0,0,viewW,viewH);
-
-  const x0 = Math.floor(offsetX / TILE_SIZE), y0 = Math.floor(offsetY / TILE_SIZE);
-  const x1 = Math.floor((offsetX + viewW/scale) / TILE_SIZE);
-  const y1 = Math.floor((offsetY + viewH/scale) / TILE_SIZE);
-
-  for (let tx = Math.max(0,x0-1); tx <= Math.min(TILE_COUNT-1,x1+1); tx++){
-    for (let ty = Math.max(0,y0-1); ty <= Math.min(TILE_COUNT-1,y1+1); ty++){
-      const id = tileKey(tx,ty);
-      const img = tileCache.get(id);
-      const worldX = tx * TILE_SIZE;
-      const worldY = ty * TILE_SIZE;
-      const screenX = Math.round((worldX - offsetX) * scale);
-      const screenY = Math.round((worldY - offsetY) * scale);
-      const screenSize = Math.round(TILE_SIZE * scale);
-
-      if (img instanceof HTMLImageElement) {
-        // draw tiled image
-        ctx.drawImage(img, 0, 0, img.width, img.height, screenX, screenY, screenSize, screenSize);
-      } else {
-        // draw placeholder grid for missing tile
-        ctx.strokeStyle = "#333";
-        ctx.strokeRect(screenX, screenY, screenSize, screenSize);
+  ctx.fillStyle="#fff";ctx.fillRect(0,0,viewW,viewH);
+  const x0=Math.floor(offsetX/TILE_SIZE),y0=Math.floor(offsetY/TILE_SIZE);
+  const x1=Math.floor((offsetX+viewW/scale)/TILE_SIZE);
+  const y1=Math.floor((offsetY+viewH/scale)/TILE_SIZE);
+  for(let tx=Math.max(0,x0-1);tx<=Math.min(TILE_COUNT-1,x1+1);tx++){
+    for(let ty=Math.max(0,y0-1);ty<=Math.min(TILE_COUNT-1,y1+1);ty++){
+      const id=tileKey(tx,ty);
+      const img=tileCache.get(id);
+      const worldX=tx*TILE_SIZE,worldY=ty*TILE_SIZE;
+      const screenX=Math.floor((worldX-offsetX)*scale);
+      const screenY=Math.floor((worldY-offsetY)*scale);
+      const screenSize=Math.ceil(TILE_SIZE*scale);
+      if(img instanceof HTMLImageElement){
+        ctx.drawImage(img,0,0,img.width,img.height,screenX,screenY,screenSize,screenSize);
+      }else{
+        ctx.strokeStyle="#eee";ctx.strokeRect(screenX,screenY,screenSize,screenSize);
       }
     }
   }
 }
 
-/* click/draw handling:
-   - Convert mouse to world coords
-   - Determine affected tile(s) depending on brush size
-   - Update tile canvas, encode PNG, store to Firestore
-*/
-const undoStack = [];
-document.getElementById('undoBtn').addEventListener('click', ()=> {
-  if (undoStack.length === 0) return;
-  const last = undoStack.pop();
-  applyPutToTileDoc(last.tx, last.ty, last.pngData).catch(e=>console.error("undo failed",e));
+/* Pixel setzen */
+const undoStack=[];
+document.getElementById('undoBtn').addEventListener('click',()=>{
+  if(undoStack.length===0)return;
+  const last=undoStack.pop();
+  applyPutToTileDoc(last.tx,last.ty,last.pngData);
 });
-
-async function drawFromPointer(e) {
-  const rect = viewCanvas.getBoundingClientRect();
-  const mx = e.clientX - rect.left;
-  const my = e.clientY - rect.top;
-  const worldX = offsetX + mx/scale;
-  const worldY = offsetY + my/scale;
-  const b = parseInt(brushRange.value,10);
-
-  // compute affected pixel coordinates (centered)
-  const half = Math.floor(b/2);
-  const px = Math.floor(worldX) - half;
-  const py = Math.floor(worldY) - half;
-
-  // For each pixel in brush -> map to tile(s)
-  for (let dx=0; dx<b; dx++){
-    for (let dy=0; dy<b; dy++){
-      const wx = px + dx, wy = py + dy;
-      if (wx < 0 || wy < 0 || wx >= CANVAS_SIZE || wy >= CANVAS_SIZE) continue;
-      const {tx,ty} = worldToTileCoords(wx,wy);
-      await putPixelToTile(tx,ty, wx - tx*TILE_SIZE, wy - ty*TILE_SIZE, color);
+async function drawFromPointer(e){
+  const rect=viewCanvas.getBoundingClientRect();
+  const mx=e.clientX-rect.left,my=e.clientY-rect.top;
+  const worldX=offsetX+mx/scale,worldY=offsetY+my/scale;
+  const b=parseInt(brushRange.value,10),half=Math.floor(b/2);
+  const px=Math.floor(worldX)-half,py=Math.floor(worldY)-half;
+  for(let dx=0;dx<b;dx++){
+    for(let dy=0;dy<b;dy++){
+      const wx=px+dx,wy=py+dy;
+      if(wx<0||wy<0||wx>=CANVAS_SIZE||wy>=CANVAS_SIZE)continue;
+      const{tx,ty}=worldToTileCoords(wx,wy);
+      await putPixelToTile(tx,ty,wx-tx*TILE_SIZE,wy-ty*TILE_SIZE,color);
     }
   }
 }
-
-/* Helper: load tile image into an offscreen canvas 64x64 and return context */
 async function loadTileCanvas(tx,ty){
-  const id = tileKey(tx,ty);
-  // ensure we have the latest png
-  const tileDocRef = doc(db, "tiles", id);
-  const snap = await getDoc(tileDocRef);
-  const off = document.createElement('canvas');
-  off.width = TILE_SIZE; off.height = TILE_SIZE;
-  const offCtx = off.getContext('2d');
-
-  if (snap.exists() && snap.data().png) {
-    const img = new Image();
-    await new Promise((res,rej)=> {
-      img.onload = ()=> { offCtx.drawImage(img, 0,0, TILE_SIZE, TILE_SIZE); res(); };
-      img.onerror = ()=> { offCtx.fillStyle="#0000"; offCtx.fillRect(0,0,TILE_SIZE,TILE_SIZE); res(); };
-      img.src = snap.data().png;
+  const id=tileKey(tx,ty),tileDocRef=doc(db,"tiles",id);
+  const snap=await getDoc(tileDocRef);
+  const off=document.createElement('canvas');off.width=TILE_SIZE;off.height=TILE_SIZE;
+  const offCtx=off.getContext('2d');offCtx.imageSmoothingEnabled=false;
+  if(snap.exists()&&snap.data().png){
+    const img=new Image();
+    await new Promise(res=>{
+      img.onload=()=>{offCtx.drawImage(img,0,0,TILE_SIZE,TILE_SIZE);res();};
+      img.src=snap.data().png;
     });
-  } else {
-    // blank
-    offCtx.fillStyle = "#00000000";
-    offCtx.fillRect(0,0,TILE_SIZE,TILE_SIZE);
-  }
-  return {off, offCtx, tileSnap: snap};
+  }else{offCtx.clearRect(0,0,TILE_SIZE,TILE_SIZE);}
+  return{off,offCtx};
 }
-
-/* put pixel on tile and write updated PNG to Firestore */
-async function putPixelToTile(tx,ty, localX, localY, hexColor) {
-  // client-side cooldown
-  const now = Date.now();
-  if (now - lastPutTime < LOCAL_COOLDOWN_MS) {
-    console.warn("client cooldown active");
-    return;
-  }
-  lastPutTime = now;
-
-  // load tile into canvas
-  const {off, offCtx, tileSnap} = await loadTileCanvas(tx,ty);
-
-  // save undo (store previous png dataURL)
-  const prevPng = off.toDataURL("image/png");
-  undoStack.push({tx,ty,pngData: prevPng});
-
-  // set the pixel(s)
-  const imgd = offCtx.getImageData(0,0,TILE_SIZE,TILE_SIZE);
-  const idx = (Math.floor(localY) * TILE_SIZE + Math.floor(localX)) * 4;
-  const rgba = hexToRgba(hexColor);
-  imgd.data[idx] = rgba.r;
-  imgd.data[idx+1] = rgba.g;
-  imgd.data[idx+2] = rgba.b;
-  imgd.data[idx+3] = rgba.a;
-  offCtx.putImageData(imgd, 0, 0);
-
-  // encode
-  const pngData = off.toDataURL("image/png");
-
-  // apply to Firestore
+async function putPixelToTile(tx,ty,localX,localY,hexColor){
+  const now=Date.now();if(now-lastPutTime<LOCAL_COOLDOWN_MS)return;lastPutTime=now;
+  const{off,offCtx}=await loadTileCanvas(tx,ty);
+  const prevPng=off.toDataURL("image/png");undoStack.push({tx,ty,pngData:prevPng});
+  const imgd=offCtx.getImageData(0,0,TILE_SIZE,TILE_SIZE);
+  const idx=(Math.floor(localY)*TILE_SIZE+Math.floor(localX))*4;
+  const rgba=hexToRgba(hexColor);
+  imgd.data[idx]=rgba.r;imgd.data[idx+1]=rgba.g;imgd.data[idx+2]=rgba.b;imgd.data[idx+3]=rgba.a;
+  offCtx.putImageData(imgd,0,0);
+  const pngData=off.toDataURL("image/png");
   await applyPutToTileDoc(tx,ty,pngData);
 }
-
-function hexToRgba(hex) {
-  const h = hex.replace('#','');
-  const r = parseInt(h.substring(0,2),16);
-  const g = parseInt(h.substring(2,4),16);
-  const b = parseInt(h.substring(4,6),16);
-  return {r,g,b,a:255};
+function hexToRgba(hex){
+  const h=hex.replace('#','');
+  const r=parseInt(h.substr(0,2),16),g=parseInt(h.substr(2,2),16),b=parseInt(h.substr(4,2),16);
+  return{r,g,b,a:255};
+}
+async function applyPutToTileDoc(tx,ty,pngData){
+  const id=tileKey(tx,ty),ref=doc(db,"tiles",id);
+  await setDoc(ref,{png:pngData,updatedAt:serverTimestamp(),authorUid:user.uid},{merge:true});
+  const img=new Image();img.src=pngData;tileCache.set(id,img);redrawViewport();
 }
 
-/* write tile doc */
-async function applyPutToTileDoc(tx,ty, pngData) {
-  const id = tileKey(tx,ty);
-  const tileDocRef = doc(db, "tiles", id);
-  // write: png, updatedAt, authorUid
-  try {
-    await setDoc(tileDocRef, {
-      png: pngData,
-      updatedAt: serverTimestamp(),
-      authorUid: user.uid
-    }, { merge: true });
-    // local cache update: create Image and set
-    const img = new Image();
-    img.src = pngData;
-    tileCache.set(id, img);
-    redrawViewport();
-  } catch (err) {
-    console.error("write tile failed", err);
-  }
-}
+/* Startposition Mitte */
+offsetX=(CANVAS_SIZE-viewW)/2;offsetY=(CANVAS_SIZE-viewH)/2;
+clampOffset();updateTileListeners();redrawViewport();
+setInterval(()=>updateTileListeners(),200);
 
-/* initial camera: center */
-offsetX = (CANVAS_SIZE - viewW)/2;
-offsetY = (CANVAS_SIZE - viewH)/2;
-clampOffset();
-updateTileListeners();
-redrawViewport();
-
-/* update listeners whenever camera changes (pan/zoom) */
-let lastViewportUpdate = 0;
-function scheduleViewportUpdate(){
-  const now = Date.now();
-  if (now - lastViewportUpdate < 100) return;
-  lastViewportUpdate = now;
-  updateTileListeners();
-}
-setInterval(scheduleViewportUpdate, 150);
-
-/* map mouse clicks for drawing */
-viewCanvas.addEventListener('click', (e)=> { drawFromPointer(e); });
-
-/* simple touch support */
-viewCanvas.addEventListener('touchstart', (e)=> { e.preventDefault(); const t = e.touches[0]; drawFromPointer({clientX: t.clientX, clientY: t.clientY}); }, {passive:false});
-
-/* initial tile listeners: a few central tiles */
-updateTileListeners();
-redrawViewport();
-
+viewCanvas.addEventListener('click',(e)=>drawFromPointer(e));
 </script>
 </body>
 </html>
