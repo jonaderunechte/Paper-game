@@ -87,7 +87,7 @@ import { getFirestore, doc, getDoc, setDoc, onSnapshot, serverTimestamp } from "
 const TILE_SIZE = 64;
 const CANVAS_SIZE = 8000;
 const TILE_COUNT = Math.ceil(CANVAS_SIZE / TILE_SIZE);
-const LOCAL_COOLDOWN_MS = 5000;
+const LOCAL_COOLDOWN_MS = 1000;
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
