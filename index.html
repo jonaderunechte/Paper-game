@@ -43,6 +43,12 @@
   }
   #coords { color: #ccc; font-size: 13px; margin-left: 20px; }
   #info { color: #ddd; font-size: 13px; margin-left: auto; }
+  #cooldown {
+    color: #ffcc00;
+    font-size: 14px;
+    margin-left: 15px;
+    min-width: 140px;
+  }
   button {
     padding: 6px 10px;
     border-radius: 6px;
@@ -58,6 +64,7 @@
     <div>Brush: <span id="brushSize">1</span></div>
     <input id="brushRange" type="range" min="1" max="8" value="1" />
     <button id="undoBtn">Undo</button>
+    <div id="cooldown">Ready!</div>
     <div id="coords">x:0 y:0</div>
     <div id="info">Zoom: <span id="zoomDisp">1×</span></div>
   </div>
@@ -80,24 +87,27 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebas
 import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
 import { getFirestore, doc, getDoc, setDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
 
+/* ===== Grundwerte ===== */
 const TILE_SIZE = 64;
 const CANVAS_SIZE = 8000;
 const TILE_COUNT = Math.ceil(CANVAS_SIZE / TILE_SIZE);
 const LOCAL_COOLDOWN_MS = 5000;
 
+/* ===== Firebase Init ===== */
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 let user = null;
 await signInAnonymously(auth).then(u => user = u.user);
 
-/* --- UI --- */
+/* ===== UI ===== */
 const colorPicker = document.getElementById('colorPicker');
 let color = colorPicker.value;
 colorPicker.addEventListener('input', () => color = colorPicker.value);
 const brushRange = document.getElementById('brushRange');
 const brushSizeDisp = document.getElementById('brushSize');
 brushRange.addEventListener('input', () => brushSizeDisp.textContent = brushRange.value);
+const cooldownEl = document.getElementById('cooldown');
 
 const viewCanvas = document.getElementById('viewCanvas');
 const ctx = viewCanvas.getContext('2d', { alpha: false });
@@ -112,11 +122,13 @@ viewCanvas.height = viewH;
 let scale = 1, offsetX = 0, offsetY = 0;
 document.getElementById('zoomDisp').textContent = scale + '×';
 
+/* ===== Resize ===== */
 window.addEventListener('resize', () => {
   viewW = window.innerWidth; viewH = window.innerHeight - 48;
   viewCanvas.width = viewW; viewCanvas.height = viewH; redrawViewport();
 });
 
+/* ===== Panning & Zoom ===== */
 let isPanning = false, lastPanX = 0, lastPanY = 0;
 viewCanvas.addEventListener('mousedown', e => {
   if (e.button === 1 || e.ctrlKey) { isPanning = true; lastPanX = e.clientX; lastPanY = e.clientY; return; }
@@ -133,7 +145,6 @@ window.addEventListener('mousemove', e => {
 });
 window.addEventListener('mouseup', () => isPanning = false);
 
-/* Maus-Koordinaten anzeigen */
 viewCanvas.addEventListener('mousemove', e => {
   const rect = viewCanvas.getBoundingClientRect();
   const mx = e.clientX - rect.left, my = e.clientY - rect.top;
@@ -141,7 +152,6 @@ viewCanvas.addEventListener('mousemove', e => {
   document.getElementById('coords').textContent = `x:${wx} y:${wy}`;
 });
 
-/* Zoom mit Mausrad */
 viewCanvas.addEventListener('wheel', e => {
   e.preventDefault();
   const oldScale = scale;
@@ -154,7 +164,7 @@ viewCanvas.addEventListener('wheel', e => {
   document.getElementById('zoomDisp').textContent = scale.toFixed(2) + '×';
 }, { passive: false });
 
-/* Touch: Pinch + Pan */
+/* ===== Touch Gestures ===== */
 let lastTouchDistance = 0, lastMidX = 0, lastMidY = 0;
 viewCanvas.addEventListener('touchmove', e => {
   if (e.touches.length === 2) {
@@ -187,8 +197,10 @@ function clampOffset() {
   offsetY = Math.max(0, Math.min(offsetY, CANVAS_SIZE - viewH / scale));
 }
 
-/* --- Firestore Tiles --- */
-const tileCache = new Map(), tileListeners = new Map(); let lastPutTime = 0;
+/* ===== Firestore Tile Handling ===== */
+const tileCache = new Map(), tileListeners = new Map();
+let lastPutTime = 0;
+
 function worldToTileCoords(wx, wy) { return { tx: Math.floor(wx / TILE_SIZE), ty: Math.floor(wy / TILE_SIZE) }; }
 function tileKey(tx, ty) { return `${tx}_${ty}`; }
 
@@ -222,18 +234,14 @@ function attachTileListener(tx, ty) {
   tileListeners.set(id, unsub);
 }
 
-/* --- Zeichnen / Rendern --- */
+/* ===== Rendering ===== */
 function redrawViewport() {
   ctx.clearRect(0, 0, viewW, viewH);
-  ctx.fillStyle = "#fff";
-  ctx.fillRect(0, 0, viewW, viewH);
+  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, viewW, viewH);
+  ctx.imageSmoothingEnabled = false;
   const x0 = Math.floor(offsetX / TILE_SIZE), y0 = Math.floor(offsetY / TILE_SIZE);
   const x1 = Math.floor((offsetX + viewW / scale) / TILE_SIZE);
   const y1 = Math.floor((offsetY + viewH / scale) / TILE_SIZE);
-  ctx.imageSmoothingEnabled = false;
-  ctx.webkitImageSmoothingEnabled = false;
-  ctx.mozImageSmoothingEnabled = false;
-
   for (let tx = Math.max(0, x0 - 1); tx <= Math.min(TILE_COUNT - 1, x1 + 1); tx++) {
     for (let ty = Math.max(0, y0 - 1); ty <= Math.min(TILE_COUNT - 1, y1 + 1); ty++) {
       const id = tileKey(tx, ty), img = tileCache.get(id);
@@ -247,7 +255,7 @@ function redrawViewport() {
     }
   }
 
-  // Schwarzes Gitter ab Zoom >= 15
+  // Gitter ab Zoom > 15
   if (scale >= 15) {
     const pixelSize = scale;
     const startX = -Math.floor(offsetX % 1 * scale);
@@ -263,7 +271,7 @@ function redrawViewport() {
   }
 }
 
-/* Pixel setzen */
+/* ===== Pixel setzen ===== */
 const undoStack = [];
 document.getElementById('undoBtn').addEventListener('click', () => {
   if (undoStack.length === 0) return;
@@ -293,8 +301,6 @@ async function loadTileCanvas(tx, ty) {
   off.width = TILE_SIZE; off.height = TILE_SIZE;
   const offCtx = off.getContext('2d');
   offCtx.imageSmoothingEnabled = false;
-  offCtx.webkitImageSmoothingEnabled = false;
-  offCtx.mozImageSmoothingEnabled = false;
   if (snap.exists() && snap.data().png) {
     const img = new Image();
     await new Promise(res => { img.onload = () => { offCtx.drawImage(img, 0, 0, TILE_SIZE, TILE_SIZE); res(); }; img.src = snap.data().png; });
@@ -303,7 +309,10 @@ async function loadTileCanvas(tx, ty) {
 }
 
 async function putPixelToTile(tx, ty, localX, localY, hexColor) {
-  const now = Date.now(); if (now - lastPutTime < LOCAL_COOLDOWN_MS) return; lastPutTime = now;
+  const now = Date.now();
+  if (now - lastPutTime < LOCAL_COOLDOWN_MS) return;
+  lastPutTime = now;
+
   const { off, offCtx } = await loadTileCanvas(tx, ty);
   const prev = off.toDataURL(); undoStack.push({ tx, ty, pngData: prev });
   const imgd = offCtx.getImageData(0, 0, TILE_SIZE, TILE_SIZE);
@@ -331,9 +340,25 @@ async function applyPutToTileDoc(tx, ty, png) {
   const img = new Image(); img.src = png; tileCache.set(id, img); redrawViewport();
 }
 
-/* Startposition Mitte */
-offsetX = (CANVAS_SIZE - viewW) / 2; offsetY = (CANVAS_SIZE - viewH) / 2;
-clampOffset(); updateTileListeners(); redrawViewport();
+/* ===== Cooldown-Timer-Anzeige ===== */
+setInterval(() => {
+  const now = Date.now();
+  const remaining = (LOCAL_COOLDOWN_MS - (now - lastPutTime)) / 1000;
+  if (remaining > 0) {
+    cooldownEl.textContent = `Next pixel in: ${remaining.toFixed(1)}s`;
+    cooldownEl.style.color = "#ff6666";
+  } else {
+    cooldownEl.textContent = "Ready!";
+    cooldownEl.style.color = "#00ff88";
+  }
+}, 200);
+
+/* ===== Start ===== */
+offsetX = (CANVAS_SIZE - viewW) / 2;
+offsetY = (CANVAS_SIZE - viewH) / 2;
+clampOffset();
+updateTileListeners();
+redrawViewport();
 setInterval(() => updateTileListeners(), 200);
 viewCanvas.addEventListener('click', e => drawFromPointer(e));
 </script>
