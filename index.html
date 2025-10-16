@@ -62,7 +62,7 @@
     <strong>J/place🙂 (8000×8000)</strong>
     <input type="color" id="colorPicker" value="#ff0000" title="Farbe wählen" />
     <div>Brush: <span id="brushSize">1</span></div>
-    <input id="brushRange" type="range" min="1" max="8" value="1" />
+    <input id="brushRange" type="range" min="1" max="20" value="1" />
     <button id="undoBtn">Undo</button>
     <div id="cooldown">Ready!</div>
     <div id="coords">x:0 y:0</div>
@@ -91,7 +91,7 @@ import { getFirestore, doc, getDoc, setDoc, onSnapshot, serverTimestamp } from "
 const TILE_SIZE = 64;
 const CANVAS_SIZE = 8000;
 const TILE_COUNT = Math.ceil(CANVAS_SIZE / TILE_SIZE);
-const LOCAL_COOLDOWN_MS = 5000;
+const LOCAL_COOLDOWN_MS = 50;
 
 /* ===== Firebase Init ===== */
 const app = initializeApp(firebaseConfig);
