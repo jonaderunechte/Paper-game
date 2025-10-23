@@ -448,57 +448,135 @@ const captchaCancel = document.getElementById('captchaCancel');
 const captchaMessage = document.getElementById('captchaMessage');
 const captchaTitle = document.getElementById('captchaTitle');
 
-const ICONS = {
-  'Auto': `<svg viewBox="0 0 24 24" width="64" height="64" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="7" width="20" height="7" rx="2" fill="#444"/><circle cx="7" cy="17" r="2" fill="#222"/><circle cx="17" cy="17" r="2" fill="#222"/></svg>`,
-  'Zebrastreifen': `<svg viewBox="0 0 24 24" width="64" height="64" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="6" width="20" height="3" fill="#444"/><rect x="2" y="10" width="20" height="3" fill="#eee"/><rect x="2" y="14" width="20" height="3" fill="#444"/></svg>`,
-  'Treppe': `<svg viewBox="0 0 24 24" width="64" height="64" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="16" width="20" height="2" fill="#444"/><rect x="2" y="12" width="14" height="2" fill="#666"/><rect x="2" y="8" width="8" height="2" fill="#888"/></svg>`
-};
+/* ===== Captcha Implementation mit echten Bildern (Wikimedia) ===== */
 
-function makeSVGDataURI(svg) {
-  return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+const captchaOverlay = document.getElementById('captchaOverlay');
+const captchaGrid = document.getElementById('captchaGrid');
+const captchaInstruction = document.getElementById('captchaInstruction');
+const captchaReload = document.getElementById('captchaReload');
+const captchaVerify = document.getElementById('captchaVerify');
+const captchaCancel = document.getElementById('captchaCancel');
+const captchaMessage = document.getElementById('captchaMessage');
+const captchaTitle = document.getElementById('captchaTitle');
+
+/* ---- Bild-URLs (Beispiele, erweiterbar) ---- */
+const cars = [
+  "https://upload.wikimedia.org/wikipedia/commons/d/d2/Old_Car_2014.jpg",
+  "https://upload.wikimedia.org/wikipedia/commons/3/3c/1936_Chrysler_Airstream.jpg",
+  "https://upload.wikimedia.org/wikipedia/commons/7/79/Slot01.jpg"
+];
+
+const zebras = [
+  "https://upload.wikimedia.org/wikipedia/commons/6/64/Zebra_crossing.jpg",
+  "https://upload.wikimedia.org/wikipedia/commons/0/0a/Abbey_Road_Zebra_crossing.jpg",
+  "https://upload.wikimedia.org/wikipedia/commons/2/24/Zebra_crossing_example.jpg"
+];
+
+const stairs = [
+  "https://upload.wikimedia.org/wikipedia/commons/4/4b/Old_stairs_example.jpg",
+  "https://upload.wikimedia.org/wikipedia/commons/1/13/Stairs_example_2.jpg",
+  "https://upload.wikimedia.org/wikipedia/commons/2/23/Grand_staircase.jpg"
+];
+
+const traffic = [
+  "https://upload.wikimedia.org/wikipedia/commons/f/f3/Photo_enforced_traffic_light_sign.JPG",
+  "https://upload.wikimedia.org/wikipedia/commons/5/5d/Traffic_light_example.jpg",
+  "https://upload.wikimedia.org/wikipedia/commons/a/a3/Traffic_lights_at_crossing.jpg"
+];
+
+/* --- Hilfsfunktionen --- */
+function pickRandom(arr, n = 9) {
+  const copy = arr.slice();
+  const out = [];
+  while (out.length < n && copy.length) {
+    const i = Math.floor(Math.random() * copy.length);
+    out.push(copy.splice(i, 1)[0]);
+  }
+  return out;
 }
 
-function randomInt(max) { return Math.floor(Math.random() * max); }
+/* --- Captcha Generator --- */
+async function showImageCaptcha() {
+  const categories = ['Auto', 'Zebrastreifen', 'Treppe', 'Ampel'];
+  const cat = categories[Math.floor(Math.random() * categories.length)];
+  captchaInstruction.textContent = `Klicke alle Bilder mit "${cat}" an.`;
+  captchaMessage.textContent = '';
 
-/**
- * showImageCaptcha()
- * zeigt das modal und gibt ein Promise zurück, das true/false liefert
- */
-function showImageCaptcha() {
+  let sourceArr;
+  if (cat === 'Auto') sourceArr = cars;
+  else if (cat === 'Zebrastreifen') sourceArr = zebras;
+  else if (cat === 'Treppe') sourceArr = stairs;
+  else sourceArr = traffic;
+
+  const gridImages = pickRandom(sourceArr, 9);
+  captchaGrid.innerHTML = '';
+
+  const targetCount = 2 + Math.floor(Math.random() * 3);
+  const targetSet = new Set();
+  while (targetSet.size < targetCount) targetSet.add(Math.floor(Math.random() * 9));
+
+  gridImages.forEach((url, i) => {
+    const cell = document.createElement('div');
+    cell.className = 'captcha-cell';
+    cell.dataset.index = i;
+    cell.dataset.type = targetSet.has(i) ? cat : 'other';
+    const img = document.createElement('img');
+    img.src = url;
+    img.alt = `${cat} image`;
+    img.style.width = '100%';
+    img.style.height = '100%';
+    img.style.objectFit = 'cover';
+    cell.appendChild(img);
+    cell.addEventListener('click', () => cell.classList.toggle('selected'));
+    captchaGrid.appendChild(cell);
+  });
+
+  captchaOverlay.style.display = 'flex';
+  captchaOverlay.setAttribute('aria-hidden', 'false');
+
   return new Promise((resolve) => {
-    // build challenge
-    const types = Object.keys(ICONS);
-    const target = types[randomInt(types.length)]; // z.B. 'Auto'
-    captchaInstruction.textContent = `Klicke alle Felder mit "${target}" an.`;
-    captchaMessage.textContent = '';
-    captchaTitle.textContent = 'Sicherheitsüberprüfung';
-
-    // prepare grid
-    const cells = [];
-    const targetCount = 2 + randomInt(3); // 2..4 targets
-    const targetPositions = new Set();
-    while (targetPositions.size < targetCount) targetPositions.add(randomInt(9));
-    captchaGrid.innerHTML = '';
-
-    // Fill grid with icons; some cells will be target, others random other icons
-    for (let i = 0; i < 9; i++) {
-      const cell = document.createElement('div');
-      cell.className = 'captcha-cell';
-      const isTarget = targetPositions.has(i);
-      // choose icon: if target -> target icon, else random other icon (could by chance be same; that's okay small variability)
-      let iconKey = isTarget ? target : types.filter(t => t !== target)[randomInt(types.length - 1)];
-      const img = document.createElement('div');
-      img.innerHTML = ICONS[iconKey];
-      // set data attributes
-      cell.dataset.type = iconKey;
-      cell.dataset.index = i.toString();
-      cell.appendChild(img);
-      cell.addEventListener('click', () => {
-        cell.classList.toggle('selected');
-      });
-      captchaGrid.appendChild(cell);
-      cells.push(cell);
+    function onVerify() {
+      const selected = Array.from(captchaGrid.querySelectorAll('.captcha-cell.selected'))
+        .map(c => Number(c.dataset.index))
+        .sort((a, b) => a - b);
+      const actual = Array.from(targetSet).sort((a, b) => a - b);
+      const equal = selected.length === actual.length && selected.every((v, i) => v === actual[i]);
+      if (equal) {
+        captchaMessage.style.color = '#0a0';
+        captchaMessage.textContent = 'Richtig!';
+        sendTrackingEvent('captcha_passed', { category: cat });
+        cleanup(true);
+      } else {
+        captchaMessage.style.color = '#b00';
+        captchaMessage.textContent = 'Falsch. Versuche es erneut.';
+        sendTrackingEvent('captcha_failed', { category: cat });
+      }
     }
+    function onCancel() {
+      captchaMessage.style.color = '#b00';
+      captchaMessage.textContent = 'Abgebrochen.';
+      sendTrackingEvent('captcha_cancelled', { category: cat });
+      cleanup(false);
+    }
+    function onReload() {
+      captchaReload.removeEventListener('click', onReload);
+      captchaVerify.removeEventListener('click', onVerify);
+      captchaCancel.removeEventListener('click', onCancel);
+      showImageCaptcha().then(r => resolve(r));
+    }
+    function cleanup(result) {
+      captchaOverlay.style.display = 'none';
+      captchaOverlay.setAttribute('aria-hidden', 'true');
+      captchaReload.removeEventListener('click', onReload);
+      captchaVerify.removeEventListener('click', onVerify);
+      captchaCancel.removeEventListener('click', onCancel);
+      resolve(result);
+    }
+    captchaVerify.addEventListener('click', onVerify);
+    captchaCancel.addEventListener('click', onCancel);
+    captchaReload.addEventListener('click', onReload);
+  });
+}
 
     // show overlay
     captchaOverlay.style.display = 'flex';
