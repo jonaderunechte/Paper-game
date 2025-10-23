@@ -55,6 +55,72 @@
     border: none;
     cursor: pointer;
   }
+
+  /* Cookie Banner */
+  #cookieBanner {
+    position: fixed;
+    left: 16px;
+    right: 16px;
+    bottom: 16px;
+    background: rgba(18,18,18,0.96);
+    color: #fff;
+    border-radius: 8px;
+    padding: 18px;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    z-index: 10000;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  }
+  #cookieBanner p { margin: 0; flex: 1; font-size: 14px; color: #ddd; }
+  #cookieBanner .cb-actions { display:flex; gap:10px; align-items:center; }
+
+  /* Modal overlay for captcha */
+  .modalOverlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 10010;
+  }
+  .modal {
+    background: #fff;
+    color: #000;
+    border-radius: 8px;
+    padding: 16px;
+    width: 380px;
+    max-width: calc(100% - 40px);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+  }
+  .captcha-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    margin: 8px 0 12px 0;
+  }
+  .captcha-cell {
+    background: #f3f3f3;
+    height: 90px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    border-radius:6px;
+    cursor:pointer;
+    user-select:none;
+    border: 2px solid transparent;
+  }
+  .captcha-cell.selected { border-color: #2a9df4; box-shadow: 0 3px 8px rgba(42,157,244,0.25); }
+  .captcha-controls { display:flex; justify-content:space-between; gap:8px; align-items:center; }
+  .smallBtn { padding:6px 8px; border-radius:6px; background:#eee; cursor:pointer; border:1px solid #ccc; }
+  .captcha-hint { font-weight:600; margin-bottom:6px; }
+
+  /* responsive tweaks */
+  @media (max-width:420px) {
+    #cookieBanner { left: 8px; right: 8px; bottom: 8px; padding: 12px; }
+    .modal { width: 320px; }
+  }
 </style>
 </head>
 <body>
@@ -71,6 +137,37 @@
 
   <div id="canvasWrap"><canvas id="viewCanvas"></canvas></div>
 
+  <!-- Cookie Banner -->
+  <div id="cookieBanner" style="display:none">
+    <p>
+      Diese Seite verwendet Cookies & Tracking zur Verbesserung und Analyse. Du kannst "Alle akzeptieren" wählen
+      oder nur notwendige Cookies aktivieren. Tracking (z.B. Analyse) wird nur bei Zustimmung aktiviert.
+    </p>
+    <div class="cb-actions">
+      <button id="acceptNecessary" class="smallBtn">Nur notwendige</button>
+      <button id="acceptAll" style="background:#2a9df4;color:#fff;border:none;border-radius:6px;padding:8px 12px;">Alle akzeptieren</button>
+    </div>
+  </div>
+
+  <!-- Captcha Modal -->
+  <div id="captchaOverlay" class="modalOverlay" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="captchaTitle">
+      <div id="captchaTitle" class="captcha-hint">Bitte Aufgabe lösen</div>
+      <div id="captchaInstruction" style="font-size:14px;color:#444;margin-bottom:6px;"></div>
+      <div class="captcha-grid" id="captchaGrid"></div>
+      <div class="captcha-controls">
+        <div>
+          <button id="captchaReload" class="smallBtn">Neuer Versuch</button>
+          <button id="captchaCancel" class="smallBtn">Abbrechen</button>
+        </div>
+        <div>
+          <button id="captchaVerify" style="background:#2a9df4;color:#fff;border:none;border-radius:6px;padding:6px 10px;">Überprüfen</button>
+        </div>
+      </div>
+      <div id="captchaMessage" style="margin-top:8px;color:#b00;min-height:18px;font-size:13px;"></div>
+    </div>
+  </div>
+
 <script type="module">
 /* ===== Firebase Config ===== */
 const firebaseConfig = {
@@ -83,9 +180,10 @@ const firebaseConfig = {
 };
 /* =========================== */
 
+/* ===== Firebase imports (inkl. addDoc/collection für Tracking) ===== */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
 import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, onSnapshot, serverTimestamp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
+import { getFirestore, doc, getDoc, setDoc, onSnapshot, serverTimestamp, collection, addDoc } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore.js";
 
 /* ===== Grundwerte ===== */
 const TILE_SIZE = 64;
@@ -98,7 +196,61 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 let user = null;
-await signInAnonymously(auth).then(u => user = u.user);
+await signInAnonymously(auth).then(u => user = u.user).catch(e => console.warn("Auth failed:", e));
+
+/* ===== Consent & Tracking ===== */
+let cookieConsent = localStorage.getItem('cookieConsent') || null;
+const cookieBanner = document.getElementById('cookieBanner');
+const acceptAllBtn = document.getElementById('acceptAll');
+const acceptNecessaryBtn = document.getElementById('acceptNecessary');
+
+function showCookieBannerIfNeeded() {
+  if (!cookieConsent) cookieBanner.style.display = 'flex';
+}
+showCookieBannerIfNeeded();
+
+acceptAllBtn.addEventListener('click', async () => {
+  localStorage.setItem('cookieConsent', 'all');
+  cookieConsent = 'all';
+  cookieBanner.style.display = 'none';
+  initTracking();
+  await sendTrackingEvent('cookie_consent', { choice: 'all' });
+});
+acceptNecessaryBtn.addEventListener('click', async () => {
+  localStorage.setItem('cookieConsent', 'necessary');
+  cookieConsent = 'necessary';
+  cookieBanner.style.display = 'none';
+  await sendTrackingEvent('cookie_consent', { choice: 'necessary' });
+});
+
+/* Tracking helper: schreibt nur, wenn cookieConsent === 'all' */
+let trackingEnabled = false;
+function initTracking() {
+  trackingEnabled = true;
+  // optional: any initialization for external services would go here
+}
+
+/**
+ * sendTrackingEvent(eventName, payload)
+ * schreibt in Firestore collection "tracking" wenn Einwilligung vorliegt.
+ */
+async function sendTrackingEvent(eventName, payload = {}) {
+  try {
+    if (cookieConsent !== 'all') return; // nur mit Einwilligung
+    const docRef = await addDoc(collection(db, "tracking"), {
+      event: eventName,
+      payload,
+      uid: user ? user.uid : null,
+      ts: serverTimestamp()
+    });
+    // console.log("tracked", eventName, "->", docRef.id);
+  } catch (e) {
+    console.warn("Tracking failed:", e);
+  }
+}
+
+/* Wenn der Benutzer bereits zugestimmt hatte, aktivieren wir Tracking beim Laden */
+if (cookieConsent === 'all') initTracking();
 
 /* ===== UI ===== */
 const colorPicker = document.getElementById('colorPicker');
@@ -279,18 +431,177 @@ document.getElementById('undoBtn').addEventListener('click', () => {
   applyPutToTileDoc(last.tx, last.ty, last.pngData);
 });
 
+/* ===== Captcha Implementation (clientseitig, Bildauswahl) ===== */
+
+/*
+  - clientseitiges Bild-Captcha mit SVG-Icons (Auto, Zebrastreifen, Treppe)
+  - 3x3 Grid, Zielkategorie wird zufällig gewählt
+  - Benutzer klickt Zellen an, "Überprüfen" validiert
+*/
+
+const captchaOverlay = document.getElementById('captchaOverlay');
+const captchaGrid = document.getElementById('captchaGrid');
+const captchaInstruction = document.getElementById('captchaInstruction');
+const captchaReload = document.getElementById('captchaReload');
+const captchaVerify = document.getElementById('captchaVerify');
+const captchaCancel = document.getElementById('captchaCancel');
+const captchaMessage = document.getElementById('captchaMessage');
+const captchaTitle = document.getElementById('captchaTitle');
+
+const ICONS = {
+  'Auto': `<svg viewBox="0 0 24 24" width="64" height="64" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="7" width="20" height="7" rx="2" fill="#444"/><circle cx="7" cy="17" r="2" fill="#222"/><circle cx="17" cy="17" r="2" fill="#222"/></svg>`,
+  'Zebrastreifen': `<svg viewBox="0 0 24 24" width="64" height="64" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="6" width="20" height="3" fill="#444"/><rect x="2" y="10" width="20" height="3" fill="#eee"/><rect x="2" y="14" width="20" height="3" fill="#444"/></svg>`,
+  'Treppe': `<svg viewBox="0 0 24 24" width="64" height="64" xmlns="http://www.w3.org/2000/svg"><rect x="2" y="16" width="20" height="2" fill="#444"/><rect x="2" y="12" width="14" height="2" fill="#666"/><rect x="2" y="8" width="8" height="2" fill="#888"/></svg>`
+};
+
+function makeSVGDataURI(svg) {
+  return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+}
+
+function randomInt(max) { return Math.floor(Math.random() * max); }
+
+/**
+ * showImageCaptcha()
+ * zeigt das modal und gibt ein Promise zurück, das true/false liefert
+ */
+function showImageCaptcha() {
+  return new Promise((resolve) => {
+    // build challenge
+    const types = Object.keys(ICONS);
+    const target = types[randomInt(types.length)]; // z.B. 'Auto'
+    captchaInstruction.textContent = `Klicke alle Felder mit "${target}" an.`;
+    captchaMessage.textContent = '';
+    captchaTitle.textContent = 'Sicherheitsüberprüfung';
+
+    // prepare grid
+    const cells = [];
+    const targetCount = 2 + randomInt(3); // 2..4 targets
+    const targetPositions = new Set();
+    while (targetPositions.size < targetCount) targetPositions.add(randomInt(9));
+    captchaGrid.innerHTML = '';
+
+    // Fill grid with icons; some cells will be target, others random other icons
+    for (let i = 0; i < 9; i++) {
+      const cell = document.createElement('div');
+      cell.className = 'captcha-cell';
+      const isTarget = targetPositions.has(i);
+      // choose icon: if target -> target icon, else random other icon (could by chance be same; that's okay small variability)
+      let iconKey = isTarget ? target : types.filter(t => t !== target)[randomInt(types.length - 1)];
+      const img = document.createElement('div');
+      img.innerHTML = ICONS[iconKey];
+      // set data attributes
+      cell.dataset.type = iconKey;
+      cell.dataset.index = i.toString();
+      cell.appendChild(img);
+      cell.addEventListener('click', () => {
+        cell.classList.toggle('selected');
+      });
+      captchaGrid.appendChild(cell);
+      cells.push(cell);
+    }
+
+    // show overlay
+    captchaOverlay.style.display = 'flex';
+    captchaOverlay.setAttribute('aria-hidden', 'false');
+
+    // handlers
+    function cleanup(result) {
+      captchaOverlay.style.display = 'none';
+      captchaOverlay.setAttribute('aria-hidden', 'true');
+      captchaReload.removeEventListener('click', onReload);
+      captchaVerify.removeEventListener('click', onVerify);
+      captchaCancel.removeEventListener('click', onCancel);
+      resolve(result);
+    }
+
+    function onReload() {
+      // rebuild challenge
+      showImageCaptcha().then(r => cleanup(r));
+      // remove listeners of this invocation
+      captchaReload.removeEventListener('click', onReload);
+      captchaVerify.removeEventListener('click', onVerify);
+      captchaCancel.removeEventListener('click', onCancel);
+    }
+
+    function onVerify() {
+      // compute selected indices and actual target indices
+      const selected = [];
+      const actualTargets = [];
+      for (let i = 0; i < cells.length; i++) {
+        const c = cells[i];
+        if (c.classList.contains('selected')) selected.push(i);
+        if (c.dataset.type === target) actualTargets.push(i);
+      }
+      // sort & compare
+      const sSorted = selected.slice().sort((a,b)=>a-b);
+      const aSorted = actualTargets.slice().sort((a,b)=>a-b);
+      const equal = (sSorted.length === aSorted.length) && sSorted.every((v,i)=>v===aSorted[i]);
+      if (equal) {
+        captchaMessage.style.color = "#0a0";
+        captchaMessage.textContent = "Erfolgreich — danke!";
+        sendTrackingEvent('captcha_passed', { target });
+        cleanup(true);
+      } else {
+        captchaMessage.style.color = "#b00";
+        captchaMessage.textContent = "Falsche Auswahl. Bitte versuche es erneut.";
+        sendTrackingEvent('captcha_failed', { target });
+      }
+    }
+
+    function onCancel() {
+      captchaMessage.style.color = "#b00";
+      captchaMessage.textContent = "Abgebrochen.";
+      sendTrackingEvent('captcha_cancelled', { target });
+      cleanup(false);
+    }
+
+    captchaReload.addEventListener('click', onReload);
+    captchaVerify.addEventListener('click', onVerify);
+    captchaCancel.addEventListener('click', onCancel);
+
+    // Also track that we showed the captcha (will write only when consent is given)
+    sendTrackingEvent('captcha_shown', { target });
+  });
+}
+
+/* ===== Integration: 1% Chance für Captcha beim Pixel-Setzen ===== */
+
+async function maybeRequireCaptcha() {
+  // 1% chance
+  const roll = Math.random();
+  if (roll < 0.01) {
+    // show captcha and await result
+    const ok = await showImageCaptcha();
+    if (!ok) return false; // user failed or cancelled
+    return true;
+  }
+  return true; // no captcha required
+}
+
+/* ===== Pixel set pipeline (ändert drawFromPointer leicht) ===== */
+
 async function drawFromPointer(e) {
   const r = viewCanvas.getBoundingClientRect();
   const mx = e.clientX - r.left, my = e.clientY - r.top;
   const wx = offsetX + mx / scale, wy = offsetY + my / scale;
   const b = parseInt(brushRange.value), half = Math.floor(b / 2);
   const px = Math.floor(wx) - half, py = Math.floor(wy) - half;
+
+  // Before we start modifying tiles: maybe require captcha (1% chance)
+  const captchaOk = await maybeRequireCaptcha();
+  if (!captchaOk) {
+    // abort placing pixels
+    return;
+  }
+
   for (let dx = 0; dx < b; dx++)
     for (let dy = 0; dy < b; dy++) {
       const wx2 = px + dx, wy2 = py + dy;
       if (wx2 < 0 || wy2 < 0 || wx2 >= CANVAS_SIZE || wy2 >= CANVAS_SIZE) continue;
       const { tx, ty } = worldToTileCoords(wx2, wy2);
       await putPixelToTile(tx, ty, wx2 - tx * TILE_SIZE, wy2 - ty * TILE_SIZE, color);
+      // send tracking event for pixel (only if consent given)
+      await sendTrackingEvent('pixel_placed', { tx, ty, localX: wx2 - tx * TILE_SIZE, localY: wy2 - ty * TILE_SIZE, color });
     }
 }
 
@@ -336,7 +647,7 @@ function hexToRgba(hex) {
 
 async function applyPutToTileDoc(tx, ty, png) {
   const id = tileKey(tx, ty);
-  await setDoc(doc(db, "tiles", id), { png, updatedAt: serverTimestamp(), authorUid: user.uid }, { merge: true });
+  await setDoc(doc(db, "tiles", id), { png, updatedAt: serverTimestamp(), authorUid: user ? user.uid : null }, { merge: true });
   const img = new Image(); img.src = png; tileCache.set(id, img); redrawViewport();
 }
 
@@ -361,6 +672,7 @@ updateTileListeners();
 redrawViewport();
 setInterval(() => updateTileListeners(), 200);
 viewCanvas.addEventListener('click', e => drawFromPointer(e));
+
 </script>
 </body>
 </html>
